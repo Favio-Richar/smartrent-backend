@@ -1,0 +1,219 @@
+// =============================================================
+// SMARTRENT+ - Prisma Schema (PostgreSQL)
+// =============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ========================= USERS =============================
+model User {
+  id               Int       @id @default(autoincrement())
+  nombre           String
+  correo           String    @unique                     // usado siempre
+  email            String?   @unique                     // opcional, también permite login
+  contrasena       String
+  telefono         String?
+  ciudad           String?
+  imagen           String?
+  bio              String?   @db.Text
+  facebook         String?
+  instagram        String?
+  linkedin         String?
+  web              String?
+  tipoCuenta       String    @default("Usuario")         // Usuario | Empresa | Admin
+  fechaRegistro    DateTime  @default(now())
+  isActive         Boolean   @default(true)
+  lastLogin        DateTime?
+  // 🔹 Recuperación de contraseña
+  resetCode        String?                               // ej: "483921"
+  resetCodeExpires DateTime?                             // ej: now() + 15 min
+
+  // Relaciones
+  publicaciones Property[]
+  empleos       Job[]           @relation("UserJobs")
+  favoritos     Favorite[]
+  comentarios   Comment[]
+  postulaciones Application[]
+  tickets       SupportTicket[]
+
+  @@index([tipoCuenta])
+  @@index([fechaRegistro])
+  @@index([resetCode])
+}
+
+// ======================== COMPANIES ==========================
+model Company {
+  id            Int      @id @default(autoincrement())
+  nombreEmpresa String
+  correo        String   @unique
+  contrasena    String
+  telefono      String?
+  direccion     String?
+  descripcion   String?
+  logo          String?
+  fechaRegistro DateTime @default(now())
+
+  // Relaciones
+  empleos     Job[]
+  propiedades Property[]
+
+  @@index([fechaRegistro])
+}
+
+// ======================== PROPERTIES =========================
+// Campos extendidos para el catálogo (tipo, comuna, geo, etc.)
+model Property {
+  id               Int      @id @default(autoincrement())
+  titulo           String
+  descripcion      String
+  precio           Float
+  categoria        String
+  ubicacion        String         // resumen de ubicación/dirección visible en card
+  comuna           String?        // filtro REAL por comuna
+  tipo             String?        // propiedad | vehiculo | cancha | piscina | herramienta | ...
+  imagen           String?
+  videoUrl         String?
+  latitude         Float?
+  longitude        Float?
+  destacado        Boolean  @default(false)
+  area             Int?
+  dormitorios      Int?
+  banos            Int?
+  anio             Int?
+  fechaPublicacion DateTime @default(now())
+
+  // 🔹 Datos de contacto que tu UI ya envía (opcionales)
+  companyName   String?
+  contactName   String?
+  contactPhone  String?
+  contactEmail  String?
+  whatsapp      String?
+  website       String?
+
+  userId    Int?
+  companyId Int?
+
+  // Relaciones
+  user        User?      @relation(fields: [userId], references: [id])
+  company     Company?   @relation(fields: [companyId], references: [id])
+  comentarios Comment[]
+  favoritos   Favorite[]
+
+  // Índices para búsquedas/orden del catálogo
+  @@index([categoria])
+  @@index([comuna])
+  @@index([tipo])
+  @@index([precio])
+  @@index([fechaPublicacion])
+}
+
+// =========================== JOBS ============================
+model Job {
+  id               Int      @id @default(autoincrement())
+  titulo           String
+  descripcion      String
+  categoria        String
+  tipoContrato     String
+  ubicacion        String
+  salario          Float?
+  fechaPublicacion DateTime @default(now())
+
+  companyId Int?
+  userId    Int?
+
+  // Relaciones
+  company       Company?      @relation(fields: [companyId], references: [id])
+  user          User?         @relation("UserJobs", fields: [userId], references: [id])
+  postulaciones Application[]
+  favoritos     Favorite[]
+
+  @@index([categoria])
+  @@index([tipoContrato])
+  @@index([fechaPublicacion])
+}
+
+// ======================== APPLICATIONS =======================
+model Application {
+  id               Int      @id @default(autoincrement())
+  userId           Int
+  jobId            Int
+  fechaPostulacion DateTime @default(now())
+  estado           String   @default("En revisión")
+
+  // Relaciones
+  user User @relation(fields: [userId], references: [id])
+  job  Job  @relation(fields: [jobId], references: [id])
+
+  @@index([userId])
+  @@index([jobId])
+  @@index([estado])
+  @@index([fechaPostulacion])
+}
+
+// ======================= SUBSCRIPTIONS =======================
+model Subscription {
+  id           Int     @id @default(autoincrement())
+  nombrePlan   String
+  precio       Float
+  descripcion  String?
+  duracionDias Int
+  nivel        String
+
+  @@index([nivel])
+}
+
+// ========================= FAVORITES =========================
+model Favorite {
+  id         Int  @id @default(autoincrement())
+  userId     Int
+  propertyId Int?
+  jobId      Int?
+
+  // Relaciones
+  user     User      @relation(fields: [userId], references: [id])
+  property Property? @relation(fields: [propertyId], references: [id])
+  job      Job?      @relation(fields: [jobId], references: [id])
+
+  @@index([userId])
+  @@index([propertyId])
+  @@index([jobId])
+}
+
+// ========================== COMMENTS =========================
+model Comment {
+  id         Int      @id @default(autoincrement())
+  contenido  String
+  fecha      DateTime @default(now())
+  userId     Int
+  propertyId Int?
+
+  // Relaciones
+  user     User      @relation(fields: [userId], references: [id])
+  property Property? @relation(fields: [propertyId], references: [id])
+
+  @@index([userId])
+  @@index([propertyId])
+  @@index([fecha])
+}
+
+// ====================== SUPPORT TICKETS ======================
+model SupportTicket {
+  id            Int      @id @default(autoincrement())
+  asunto        String
+  descripcion   String
+  estado        String   @default("Pendiente")
+  fechaCreacion DateTime @default(now())
+
+  userId Int?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([estado])
+  @@index([fechaCreacion])
+}
