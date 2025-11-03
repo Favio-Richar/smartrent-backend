@@ -1,5 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { Decimal } from '@prisma/client/runtime/library';
 
 type ListQuery = {
   page?: number;
@@ -13,46 +18,140 @@ type ListQuery = {
   sort?: 'price_asc' | 'price_desc';
 };
 
+type MyListQuery = {
+  page?: number;
+  limit?: number;
+  q?: string;
+  state?: 'draft' | 'published' | 'paused' | 'archived';
+  type?: string;
+  category?: string;
+  comuna?: string;
+  priceMin?: number;
+  priceMax?: number;
+  sort?: 'updated_desc' | 'updated_asc' | 'price_desc' | 'price_asc';
+};
+
+type Owner = { userId?: number; companyId?: number };
+type AnyObj = Record<string, any>;
+
 @Injectable()
 export class PropertiesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // FRONT -> respuesta “front keys”
+  // ---------------- helpers num/decimal ----------------
+  private toNumber(v: any): number | null {
+    if (v === null || v === undefined) return null;
+    if (v instanceof Decimal) return Number(v.toString());
+    if (typeof v === 'string') return v.trim() === '' ? null : Number(v);
+    if (typeof v === 'number') return v;
+    return Number(v);
+  }
+
+  // ---------------- Normalizador de entrada ----------------
+  private normalizeIn(payload: AnyObj, forUpdate = false): AnyObj {
+    if (!payload || typeof payload !== 'object') {
+      throw new BadRequestException('Body inválido');
+    }
+    const p = payload;
+
+    const take = (...keys: string[]) => keys.map((k) => p[k]).find((v) => v !== undefined);
+    const toNum = (v: any) =>
+      v === '' || v === null || v === undefined ? undefined : Number(v);
+    const toBool = (v: any) => v === true || v === 'true' || v === 1 || v === '1';
+
+    let metadata = take('metadata', 'meta');
+    if (typeof metadata === 'string') {
+      try {
+        metadata = JSON.parse(metadata);
+      } catch {
+        metadata = undefined;
+      }
+    }
+
+    const data: AnyObj = {
+      title: take('title', 'titulo'),
+      description: take('description', 'descripcion'),
+      price: toNum(take('price', 'precio')),
+      category: take('category', 'categoria'),
+      location: take('location', 'ubicacion'),
+      comuna: take('comuna'),
+      type: take('type', 'tipo'),
+      imageUrl: take('image_url', 'imagen', 'imageUrl'),
+      videoUrl: take('video_url', 'videoUrl'),
+      latitude: toNum(take('latitude')),
+      longitude: toNum(take('longitude')),
+      featured: toBool(take('featured', 'destacado')),
+      area: toNum(take('area')),
+      bedrooms: toNum(take('bedrooms', 'dormitorios')),
+      bathrooms: toNum(take('bathrooms', 'banos')),
+      year: toNum(take('year', 'anio')),
+      companyName: take('companyName', 'company_name'),
+      contactName: take('contactName', 'contact_name'),
+      phone: take('phone', 'contact_phone'),
+      email: take('email', 'contact_email'),
+      whatsapp: take('whatsapp'),
+      website: take('website'),
+      metadata,
+    };
+
+    if (!forUpdate) {
+      if (!data.title || String(data.title).trim() === '') {
+        throw new BadRequestException('title/titulo es requerido');
+      }
+      if (data.price === undefined || Number.isNaN(data.price)) {
+        throw new BadRequestException('price/precio es requerido y numérico');
+      }
+      if (!data.category) data.category = 'general';
+      if (!data.type) data.type = 'propiedad';
+    } else {
+      Object.keys(data).forEach((k) => data[k] === undefined && delete data[k]);
+    }
+
+    return data;
+  }
+
+  // ---------------- Map DB → Front (convierte Decimal) ----------------
   private mapProperty(p: any) {
     return {
       id: p.id,
-      title: p.titulo,
-      description: p.descripcion,
-      price: p.precio,
-      category: p.categoria,
-      location: p.ubicacion,
+      title: p.titulo ?? p.title ?? null,
+      description: p.descripcion ?? p.description ?? null,
+      price: this.toNumber(p.precio),
+      category: p.categoria ?? p.category ?? null,
+      location: p.ubicacion ?? p.location ?? null,
       comuna: p.comuna ?? null,
-      type: p.tipo ?? null,
-      image_url: p.imagen ?? null,
+      type: p.tipo ?? p.type ?? null,
+      image_url: p.imagen ?? p.imageUrl ?? null,
       video_url: p.videoUrl ?? null,
-      latitude: p.latitude ?? null,
-      longitude: p.longitude ?? null,
-      featured: p.destacado ?? false,
-      area: p.area ?? null,
-      bedrooms: p.dormitorios ?? null,
-      bathrooms: p.banos ?? null,
-      year: p.anio ?? null,
-      createdAt: p.fechaPublicacion,
+      latitude: this.toNumber(p.latitude),
+      longitude: this.toNumber(p.longitude),
+      featured: p.destacado ?? p.featured ?? false,
+      area: this.toNumber(p.area),
+      bedrooms: this.toNumber(p.dormitorios ?? p.bedrooms),
+      bathrooms: this.toNumber(p.banos ?? p.bathrooms),
+      year: this.toNumber(p.anio ?? p.year),
+      createdAt: p.fechaPublicacion ?? p.createdAt ?? null,
+      updatedAt: p.updatedAt ?? null,
 
-      // Datos de empresa/Contacto (si existen en tu schema)
+      // métricas/estado si existen en el schema
+      state: p.state ?? 'draft',
+      visitas: this.toNumber(p.visitas) ?? 0,
+      reservas: this.toNumber(p.reservas) ?? 0,
+
       companyName: p.companyName ?? null,
       contactName: p.contactName ?? null,
-      phone: p.phone ?? null,
+      phone: p.contactPhone ?? p.phone ?? null,
+      email: p.contactEmail ?? p.email ?? null,
       whatsapp: p.whatsapp ?? null,
-      email: p.email ?? null,
       website: p.website ?? null,
+
+      metadata: p.metadata ?? null,
     };
   }
 
-  // --------- WHERE (casts para no pelear con Prisma types) ----------
+  // ---------------- Filtros/Orden catálogo ----------------
   private buildWhere(q: ListQuery) {
-    const where: any = {};
-
+    const where: AnyObj = {};
     if (q.tipo) where.tipo = { equals: q.tipo, mode: 'insensitive' } as any;
     if (q.categoria)
       where.categoria = { contains: q.categoria, mode: 'insensitive' } as any;
@@ -67,21 +166,20 @@ export class PropertiesService {
 
     if (q.min != null || q.max != null) {
       where.precio = {};
-      if (q.min != null) where.precio.gte = q.min;
-      if (q.max != null) where.precio.lte = q.max;
+      if (q.min != null) (where.precio as AnyObj).gte = q.min;
+      if (q.max != null) (where.precio as AnyObj).lte = q.max;
     }
 
     return where as any;
   }
 
-  // --------- ORDER BY (casts) ----------
   private buildOrder(sort?: 'price_asc' | 'price_desc') {
-    if (sort === 'price_asc') return ({ precio: 'asc' } as any);
-    if (sort === 'price_desc') return ({ precio: 'desc' } as any);
-    return { fechaPublicacion: 'desc' } as any;
+    if (sort === 'price_asc') return { precio: 'asc' } as any;
+    if (sort === 'price_desc') return { precio: 'desc' } as any;
+    return { id: 'desc' } as any;
   }
 
-  // ================== LIST & GET ==================
+  // ---------------- List & Get (catálogo) ----------------
   async list(q: ListQuery) {
     const page = q.page && q.page > 0 ? q.page : 1;
     const limit = q.limit && q.limit > 0 ? q.limit : 12;
@@ -93,97 +191,96 @@ export class PropertiesService {
       take: limit,
     } as any);
 
+    // Tu frontend soporta lista directa y también {items:[]}; aquí devolvemos SOLO lista
     return rows.map((p: any) => this.mapProperty(p));
   }
 
-  async getOne(id: string) {
+  async getOne(id: number) {
     const p = await this.prisma.property.findUnique({
-      where: { id: Number(id) } as any,
+      where: { id } as any,
     } as any);
-    return p ? this.mapProperty(p) : null;
+    if (!p) throw new NotFoundException('Property not found');
+    return this.mapProperty(p);
   }
 
-  // ================== CREATE ==================
+  // ---------------- Create ----------------
   async create(body: any) {
-    // FRONT -> DB (en español)
-    const data: any = {
-      titulo: body.title,
-      descripcion: body.description,
-      precio: body.price,
-      categoria: body.category,
-      ubicacion: body.location,
-      comuna: body.comuna ?? null,
-      tipo: body.type ?? null,
-      imagen: body.image_url ?? body.imageUrl ?? null,
-      videoUrl: body.video_url ?? body.videoUrl ?? null,
-      latitude: body.latitude ?? null,
-      longitude: body.longitude ?? null,
-      destacado: body.featured ?? false,
-      area: body.area ?? null,
-      dormitorios: body.bedrooms ?? null,
-      banos: body.bathrooms ?? null,
-      anio: body.year ?? null,
+    const d = this.normalizeIn(body, false);
 
-      // si añadiste estos campos al modelo Property (opcional)
-      companyName: body.companyName ?? null,
-      contactName: body.contactName ?? null,
-      phone: body.phone ?? null,
-      whatsapp: body.whatsapp ?? null,
-      email: body.email ?? null,
-      website: body.website ?? null,
-
-      // si usas auth: userId / companyId (de req.user) — aquí lo dejamos null
-      // userId: ctx?.user?.id ?? null,
-      // companyId: ctx?.user?.companyId ?? null,
+    const toDb: AnyObj = {
+      titulo: d.title,
+      descripcion: d.description ?? '',
+      precio: d.price, // Decimal acepta number; al leer lo convertimos
+      categoria: d.category ?? 'general',
+      ubicacion: d.location ?? '',
+      comuna: d.comuna ?? null,
+      tipo: d.type ?? 'propiedad',
+      imagen: d.imageUrl ?? body?.image_url ?? null,
+      videoUrl: d.videoUrl ?? null,
+      latitude: d.latitude ?? null,
+      longitude: d.longitude ?? null,
+      destacado: d.featured ?? false,
+      area: d.area ?? null,
+      dormitorios: d.bedrooms ?? null,
+      banos: d.bathrooms ?? null,
+      anio: d.year ?? null,
+      companyName: d.companyName ?? null,
+      contactName: d.contactName ?? null,
+      contactPhone: d.phone ?? null,
+      contactEmail: d.email ?? null,
+      whatsapp: d.whatsapp ?? null,
+      website: d.website ?? null,
+      metadata: d.metadata ?? null,
     };
 
-    const created = await this.prisma.property.create({ data });
+    const created = await this.prisma.property.create({ data: toDb } as any);
     return this.mapProperty(created);
   }
 
-  // ================== UPDATE ==================
-  async update(id: string, body: any) {
-    // Arma un objeto parcial sólo con lo que venga
-    const data: any = {
-      ...(body.title != null && { titulo: body.title }),
-      ...(body.description != null && { descripcion: body.description }),
-      ...(body.price != null && { precio: body.price }),
-      ...(body.category != null && { categoria: body.category }),
-      ...(body.location != null && { ubicacion: body.location }),
-      ...(body.comuna != null && { comuna: body.comuna }),
-      ...(body.type != null && { tipo: body.type }),
-      ...(body.image_url != null && { imagen: body.image_url }),
-      ...(body.video_url != null && { videoUrl: body.video_url }),
-      ...(body.latitude != null && { latitude: body.latitude }),
-      ...(body.longitude != null && { longitude: body.longitude }),
-      ...(body.featured != null && { destacado: body.featured }),
-      ...(body.area != null && { area: body.area }),
-      ...(body.bedrooms != null && { dormitorios: body.bedrooms }),
-      ...(body.bathrooms != null && { banos: body.bathrooms }),
-      ...(body.year != null && { anio: body.year }),
+  // ---------------- Update ----------------
+  async update(id: number, body: any) {
+    const d = this.normalizeIn(body, true);
 
-      ...(body.companyName != null && { companyName: body.companyName }),
-      ...(body.contactName != null && { contactName: body.contactName }),
-      ...(body.phone != null && { phone: body.phone }),
-      ...(body.whatsapp != null && { whatsapp: body.whatsapp }),
-      ...(body.email != null && { email: body.email }),
-      ...(body.website != null && { website: body.website }),
+    const toDb: AnyObj = {
+      ...(d.title !== undefined && { titulo: d.title }),
+      ...(d.description !== undefined && { descripcion: d.description }),
+      ...(d.price !== undefined && { precio: d.price }),
+      ...(d.category !== undefined && { categoria: d.category }),
+      ...(d.location !== undefined && { ubicacion: d.location }),
+      ...(d.comuna !== undefined && { comuna: d.comuna }),
+      ...(d.type !== undefined && { tipo: d.type }),
+      ...(d.imageUrl !== undefined && { imagen: d.imageUrl }),
+      ...(d.videoUrl !== undefined && { videoUrl: d.videoUrl }),
+      ...(d.latitude !== undefined && { latitude: d.latitude }),
+      ...(d.longitude !== undefined && { longitude: d.longitude }),
+      ...(d.featured !== undefined && { destacado: d.featured }),
+      ...(d.area !== undefined && { area: d.area }),
+      ...(d.bedrooms !== undefined && { dormitorios: d.bedrooms }),
+      ...(d.bathrooms !== undefined && { banos: d.bathrooms }),
+      ...(d.year !== undefined && { anio: d.year }),
+      ...(d.companyName !== undefined && { companyName: d.companyName }),
+      ...(d.contactName !== undefined && { contactName: d.contactName }),
+      ...(d.phone !== undefined && { contactPhone: d.phone }),
+      ...(d.email !== undefined && { contactEmail: d.email }),
+      ...(d.whatsapp !== undefined && { whatsapp: d.whatsapp }),
+      ...(d.website !== undefined && { website: d.website }),
+      ...(d.metadata !== undefined && { metadata: d.metadata }),
     };
 
     const updated = await this.prisma.property.update({
-      where: { id: Number(id) },
-      data,
-    });
+      where: { id } as any,
+      data: toDb as any,
+    } as any);
     return this.mapProperty(updated);
   }
 
-  // ================== DELETE (opcional) ==================
-  async remove(id: string) {
-    await this.prisma.property.delete({ where: { id: Number(id) } as any });
+  // ---------------- Delete ----------------
+  async remove(id: number) {
+    await this.prisma.property.delete({ where: { id } as any } as any);
     return { ok: true };
   }
 
-  // ================== Utils ==================
+  // ---------------- Utils ----------------
   async getComunas() {
     const rows = await this.prisma.property.findMany({
       where: { comuna: { not: null } } as any,
@@ -202,5 +299,150 @@ export class PropertiesService {
       orderBy: { tipo: 'asc' } as any,
     } as any);
     return rows.map((r: any) => r.tipo).filter(Boolean);
+  }
+
+  // ================== /me ==================
+  private buildOwnerWhere(owner: Owner): AnyObj {
+    const AND: AnyObj[] = [];
+    if (owner.userId) AND.push({ userId: owner.userId });
+    if (owner.companyId) AND.push({ companyId: owner.companyId });
+    return AND.length ? { AND } : {};
+  }
+
+  private buildMyWhere(owner: Owner, q: MyListQuery): AnyObj {
+    const AND: AnyObj[] = [];
+    const OW = this.buildOwnerWhere(owner);
+    if ((OW as any).AND) AND.push(...(OW as any).AND);
+
+    if (q.q) {
+      AND.push({
+        OR: [
+          { titulo: { contains: q.q, mode: 'insensitive' } },
+          { descripcion: { contains: q.q, mode: 'insensitive' } },
+          { ubicacion: { contains: q.q, mode: 'insensitive' } },
+          { comuna: { contains: q.q, mode: 'insensitive' } },
+          { categoria: { contains: q.q, mode: 'insensitive' } },
+        ],
+      });
+    }
+    if (q.state) AND.push({ state: q.state });
+    if (q.type) AND.push({ tipo: q.type });
+    if (q.category) AND.push({ categoria: q.category });
+    if (q.comuna) AND.push({ comuna: q.comuna });
+    if (q.priceMin !== undefined) AND.push({ precio: { gte: q.priceMin } });
+    if (q.priceMax !== undefined) AND.push({ precio: { lte: q.priceMax } });
+
+    return AND.length ? { AND } : {};
+  }
+
+  private buildMyOrder(sort?: MyListQuery['sort']) {
+    switch (sort) {
+      case 'updated_asc':
+        return { updatedAt: 'asc' } as any;
+      case 'price_desc':
+        return { precio: 'desc' } as any;
+      case 'price_asc':
+        return { precio: 'asc' } as any;
+      case 'updated_desc':
+      default:
+        return { updatedAt: 'desc' } as any;
+    }
+  }
+
+  async myList(owner: Owner, q: MyListQuery) {
+    const page = q.page && q.page > 0 ? q.page : 1;
+    const limit = q.limit && q.limit > 0 ? q.limit : 10;
+
+    const where = this.buildMyWhere(owner, q);
+    const orderBy = this.buildMyOrder(q.sort);
+
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.property.findMany({
+        where,
+        orderBy,
+        skip: (page - 1) * limit,
+        take: limit,
+      } as any),
+      this.prisma.property.count({ where } as any),
+    ]);
+
+    return {
+      items: items.map((p) => this.mapProperty(p)),
+      total,
+      page,
+      limit,
+    };
+  }
+
+  async myMetrics(owner: Owner) {
+    const base = this.buildOwnerWhere(owner);
+
+    const [published, drafts, paused, archived, views, reservations] =
+      await this.prisma.$transaction([
+        this.prisma.property.count({ where: { AND: [base, { state: 'published' }] } as any }),
+        this.prisma.property.count({ where: { AND: [base, { state: 'draft' }] } as any }),
+        this.prisma.property.count({ where: { AND: [base, { state: 'paused' }] } as any }),
+        this.prisma.property.count({ where: { AND: [base, { state: 'archived' }] } as any }),
+        this.prisma.property.aggregate({ _sum: { visitas: true }, where: base as any } as any),
+        this.prisma.property.aggregate({ _sum: { reservas: true }, where: base as any } as any),
+      ]);
+
+    return {
+      published,
+      drafts,
+      paused,
+      archived,
+      views: (views as any)._sum?.visitas ?? 0,
+      reservations: (reservations as any)._sum?.reservas ?? 0,
+    };
+  }
+
+  async updateState(
+    id: number,
+    state: 'draft' | 'published' | 'paused' | 'archived',
+    owner?: Owner,
+  ) {
+    const p = await this.prisma.property.findUnique({ where: { id } as any } as any);
+    if (!p) throw new NotFoundException('Property not found');
+
+    if (owner?.userId && p.userId && p.userId !== owner.userId) {
+      throw new NotFoundException('Property not found');
+    }
+    if (owner?.companyId && p.companyId && p.companyId !== owner.companyId) {
+      throw new NotFoundException('Property not found');
+    }
+
+    const updated = await this.prisma.property.update({
+      where: { id } as any,
+      data: { state } as any,
+    } as any);
+
+    return this.mapProperty(updated);
+  }
+
+  async clone(id: number, owner?: Owner) {
+    const orig = await this.prisma.property.findUnique({ where: { id } as any } as any);
+    if (!orig) throw new NotFoundException('Property not found');
+
+    if (owner?.userId && orig.userId && orig.userId !== owner.userId) {
+      throw new NotFoundException('Property not found');
+    }
+    if (owner?.companyId && orig.companyId && orig.companyId !== owner.companyId) {
+      throw new NotFoundException('Property not found');
+    }
+
+    const { id: _id, createdAt, updatedAt, visitas, reservas, ...rest } = orig as any;
+
+    const copy = await this.prisma.property.create({
+      data: {
+        ...rest,
+        titulo: `${orig.titulo} (copia)`,
+        state: 'draft',
+        visitas: 0,
+        reservas: 0,
+      } as any,
+    } as any);
+
+    return this.mapProperty(copy);
   }
 }

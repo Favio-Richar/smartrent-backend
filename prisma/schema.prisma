@@ -11,12 +11,20 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ---------- Estado de Propiedad ----------
+enum PropertyState {
+  draft
+  published
+  paused
+  archived
+}
+
 // ========================= USERS =============================
 model User {
   id               Int       @id @default(autoincrement())
   nombre           String
-  correo           String    @unique                     // usado siempre
-  email            String?   @unique                     // opcional, también permite login
+  correo           String    @unique
+  email            String?   @unique
   contrasena       String
   telefono         String?
   ciudad           String?
@@ -26,21 +34,20 @@ model User {
   instagram        String?
   linkedin         String?
   web              String?
-  tipoCuenta       String    @default("Usuario")         // Usuario | Empresa | Admin
+  tipoCuenta       String    @default("Usuario")
   fechaRegistro    DateTime  @default(now())
   isActive         Boolean   @default(true)
   lastLogin        DateTime?
-  // 🔹 Recuperación de contraseña
-  resetCode        String?                               // ej: "483921"
-  resetCodeExpires DateTime?                             // ej: now() + 15 min
+  resetCode        String?
+  resetCodeExpires DateTime?
 
-  // Relaciones
   publicaciones Property[]
   empleos       Job[]           @relation("UserJobs")
   favoritos     Favorite[]
   comentarios   Comment[]
   postulaciones Application[]
   tickets       SupportTicket[]
+  reservations  Reservation[] // reservas hechas por este usuario
 
   @@index([tipoCuenta])
   @@index([fechaRegistro])
@@ -59,7 +66,6 @@ model Company {
   logo          String?
   fechaRegistro DateTime @default(now())
 
-  // Relaciones
   empleos     Job[]
   propiedades Property[]
 
@@ -67,16 +73,15 @@ model Company {
 }
 
 // ======================== PROPERTIES =========================
-// Campos extendidos para el catálogo (tipo, comuna, geo, etc.)
 model Property {
   id               Int      @id @default(autoincrement())
   titulo           String
   descripcion      String
   precio           Float
   categoria        String
-  ubicacion        String         // resumen de ubicación/dirección visible en card
-  comuna           String?        // filtro REAL por comuna
-  tipo             String?        // propiedad | vehiculo | cancha | piscina | herramienta | ...
+  ubicacion        String
+  comuna           String?
+  tipo             String?
   imagen           String?
   videoUrl         String?
   latitude         Float?
@@ -87,30 +92,38 @@ model Property {
   banos            Int?
   anio             Int?
   fechaPublicacion DateTime @default(now())
+  metadata         Json?
+  companyName      String?
+  contactName      String?
+  contactPhone     String?
+  contactEmail     String?
+  whatsapp         String?
+  website          String?
 
-  // 🔹 Datos de contacto que tu UI ya envía (opcionales)
-  companyName   String?
-  contactName   String?
-  contactPhone  String?
-  contactEmail  String?
-  whatsapp      String?
-  website       String?
+  // Métricas/estado
+  visitas  Int           @default(0)
+  reservas Int           @default(0)
+  state    PropertyState @default(draft)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt @default(now())  // 👈 agrega @default(now())
 
   userId    Int?
   companyId Int?
 
-  // Relaciones
-  user        User?      @relation(fields: [userId], references: [id])
-  company     Company?   @relation(fields: [companyId], references: [id])
-  comentarios Comment[]
-  favoritos   Favorite[]
+  user         User?         @relation(fields: [userId], references: [id])
+  company      Company?      @relation(fields: [companyId], references: [id])
+  comentarios  Comment[]
+  favoritos    Favorite[]
+  reservations Reservation[] // reservas sobre esta propiedad
 
-  // Índices para búsquedas/orden del catálogo
   @@index([categoria])
   @@index([comuna])
   @@index([tipo])
   @@index([precio])
   @@index([fechaPublicacion])
+  @@index([state])
 }
 
 // =========================== JOBS ============================
@@ -127,7 +140,6 @@ model Job {
   companyId Int?
   userId    Int?
 
-  // Relaciones
   company       Company?      @relation(fields: [companyId], references: [id])
   user          User?         @relation("UserJobs", fields: [userId], references: [id])
   postulaciones Application[]
@@ -146,7 +158,6 @@ model Application {
   fechaPostulacion DateTime @default(now())
   estado           String   @default("En revisión")
 
-  // Relaciones
   user User @relation(fields: [userId], references: [id])
   job  Job  @relation(fields: [jobId], references: [id])
 
@@ -175,7 +186,6 @@ model Favorite {
   propertyId Int?
   jobId      Int?
 
-  // Relaciones
   user     User      @relation(fields: [userId], references: [id])
   property Property? @relation(fields: [propertyId], references: [id])
   job      Job?      @relation(fields: [jobId], references: [id])
@@ -193,7 +203,6 @@ model Comment {
   userId     Int
   propertyId Int?
 
-  // Relaciones
   user     User      @relation(fields: [userId], references: [id])
   property Property? @relation(fields: [propertyId], references: [id])
 
@@ -211,9 +220,31 @@ model SupportTicket {
   fechaCreacion DateTime @default(now())
 
   userId Int?
-  user   User?   @relation(fields: [userId], references: [id])
+  user   User? @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([estado])
   @@index([fechaCreacion])
+}
+
+// ========================= RESERVATIONS ======================
+model Reservation {
+  id         Int      @id @default(autoincrement())
+  propertyId Int
+  userId     Int
+  startDate  DateTime
+  endDate    DateTime
+  message    String?  @db.Text
+  people     Int      @default(1)
+  status     String   @default("Pendiente") // Pendiente | Aprobada | Cancelada
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  property Property @relation(fields: [propertyId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@index([propertyId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
 }

@@ -1,3 +1,4 @@
+// src/app.module.ts
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -13,6 +14,9 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { AdminModule } from './admin/admin.module';
 import { SupportModule } from './support/support.module';
 
+// ✅ NUEVO: módulo de reservas
+import { ReservationsModule } from './reservations/reservations.module';
+
 // 🔹 Prisma Service (conexión central a la BD)
 import { PrismaService } from './prisma/prisma.service';
 
@@ -27,11 +31,14 @@ import { PrismaService } from './prisma/prisma.service';
     SubscriptionsModule,
     AdminModule,
     SupportModule,
+
+    // 👇 muy importante: ahora Nest sí expone /api/reservas/...
+    ReservationsModule,
   ],
   controllers: [AppController],
   providers: [
     AppService,
-    PrismaService, // ✅ agregado para habilitar Prisma globalmente
+    
   ],
 })
 export class AppModule {}
