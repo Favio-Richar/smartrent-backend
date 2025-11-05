@@ -11,20 +11,21 @@ import {
   Put,
   Query,
   Req,
+  UseGuards,
 } from '@nestjs/common';
 import { PropertiesService } from './properties.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
-@Controller('properties') // con prefix global 'api' → /api/properties
+@Controller('properties') // con prefix global 'api' => /api/properties
 export class PropertiesController {
   constructor(private readonly svc: PropertiesService) {}
 
   // --------------------------- Helpers ---------------------------
-  /** Extrae user/company desde req.user y headers de fallback (no rompe si aún no integras JWT) */
   private ownerFromReq(req: any) {
     return {
       userId:
         req?.user?.id ??
-        req?.user?.userId ??
+        req?.user?.sub ??
         (req?.headers?.['x-user-id'] ? Number(req.headers['x-user-id']) : undefined),
       companyId:
         req?.user?.companyId ??
@@ -34,7 +35,6 @@ export class PropertiesController {
   }
 
   // ======================= Mis propiedades =======================
-  // GET /api/properties/me?page=1&limit=10&q=&state=&type=&category=&comuna=&priceMin=&priceMax=&sort=updated_desc
   @Get('me')
   async myList(
     @Req() req: any,
@@ -64,14 +64,12 @@ export class PropertiesController {
     });
   }
 
-  // GET /api/properties/me/metrics
   @Get('me/metrics')
   async myMetrics(@Req() req: any) {
     const owner = this.ownerFromReq(req);
     return this.svc.myMetrics(owner);
   }
 
-  // PATCH /api/properties/:id/state  body: { state: 'draft'|'published'|'paused'|'archived' }
   @Patch(':id/state')
   async changeState(
     @Param('id', ParseIntPipe) id: number,
@@ -83,7 +81,6 @@ export class PropertiesController {
     return this.svc.updateState(id, state, owner);
   }
 
-  // POST /api/properties/:id/clone
   @Post(':id/clone')
   async clone(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     const owner = this.ownerFromReq(req);
@@ -91,7 +88,6 @@ export class PropertiesController {
   }
 
   // ======================= Catálogo general ======================
-  // Acepta page/limit y también skip/take/offset (lo manda tu app)
   @Get()
   async list(
     @Query('page') page?: string,
@@ -127,7 +123,6 @@ export class PropertiesController {
     });
   }
 
-  // ⚠️ utils antes de :id
   @Get('utils/comunas')
   async comunas() {
     return this.svc.getComunas();
@@ -143,12 +138,22 @@ export class PropertiesController {
     return this.svc.getOne(id);
   }
 
+  // ======================= Crear/Actualizar/Eliminar =======================
+  @UseGuards(JwtAuthGuard)
   @Post()
-  async create(@Body() body: any) {
+  async create(@Req() req: any, @Body() body: any) {
     if (!body || (typeof body === 'object' && Object.keys(body).length === 0)) {
       throw new BadRequestException('Request body vacío o inválido');
     }
-    return this.svc.create(body);
+
+    const owner = this.ownerFromReq(req);
+    const companyIdFromBody =
+      body?.companyId ?? body?.empresaId ?? body?.company_id ?? undefined;
+
+    return this.svc.create(body, {
+      userId: companyIdFromBody ? undefined : owner.userId,
+      companyId: companyIdFromBody ? Number(companyIdFromBody) : owner.companyId,
+    });
   }
 
   @Put(':id')
@@ -162,5 +167,21 @@ export class PropertiesController {
   @Delete(':id')
   async remove(@Param('id', ParseIntPipe) id: number) {
     return this.svc.remove(id);
+  }
+
+  @Patch(':id/owner')
+  async setOwner(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: any,
+    @Body() body: any,
+  ) {
+    const userIdFromJwt = req?.user?.id ?? req?.user?.sub ?? undefined;
+    const companyIdFromBody =
+      body?.companyId ?? body?.empresaId ?? body?.company_id ?? undefined;
+
+    return this.svc.update(id, {
+      userId: companyIdFromBody ? null : userIdFromJwt,
+      companyId: companyIdFromBody ? Number(companyIdFromBody) : null,
+    });
   }
 }

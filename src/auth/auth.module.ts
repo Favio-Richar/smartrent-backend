@@ -1,17 +1,26 @@
-// src/auth/auth.module.ts
 import { Module } from '@nestjs/common';
+import { PassportModule } from '@nestjs/passport';
+import { JwtModule } from '@nestjs/jwt';
+
+import { PrismaModule } from '../prisma/prisma.module';
+import { MailerModule } from '../mailer/mailer.module';
+
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
-import { PrismaModule } from '../prisma/prisma.module';
-import { MailerModule } from '../mailer/mailer.module'; // 👈 importar el mailer
+import { JwtStrategy } from './jwt.strategy';
 
 @Module({
   imports: [
     PrismaModule,
-    MailerModule, // 👈 habilita MailerService vía DI en AuthService
+    MailerModule,
+    PassportModule.register({ defaultStrategy: 'jwt' }),
+    JwtModule.register({
+      secret: process.env.JWT_SECRET || 'SmartRentPlus_Backend_JWT_KEY_2025',
+      signOptions: { expiresIn: '8h' },
+    }),
   ],
   controllers: [AuthController],
-  providers: [AuthService],
-  exports: [AuthService], // (opcional) si otro módulo necesita AuthService
+  providers: [AuthService, JwtStrategy],
+  exports: [AuthService, PassportModule, JwtModule],
 })
 export class AuthModule {}

@@ -38,7 +38,6 @@ type AnyObj = Record<string, any>;
 export class PropertiesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // ---------------- helpers num/decimal ----------------
   private toNumber(v: any): number | null {
     if (v === null || v === undefined) return null;
     if (v instanceof Decimal) return Number(v.toString());
@@ -47,7 +46,6 @@ export class PropertiesService {
     return Number(v);
   }
 
-  // ---------------- Normalizador de entrada ----------------
   private normalizeIn(payload: AnyObj, forUpdate = false): AnyObj {
     if (!payload || typeof payload !== 'object') {
       throw new BadRequestException('Body inválido');
@@ -92,6 +90,8 @@ export class PropertiesService {
       whatsapp: take('whatsapp'),
       website: take('website'),
       metadata,
+      userId: toNum(take('userId', 'user_id')),
+      companyId: toNum(take('companyId', 'company_id', 'empresaId')),
     };
 
     if (!forUpdate) {
@@ -110,7 +110,6 @@ export class PropertiesService {
     return data;
   }
 
-  // ---------------- Map DB → Front (convierte Decimal) ----------------
   private mapProperty(p: any) {
     return {
       id: p.id,
@@ -132,30 +131,26 @@ export class PropertiesService {
       year: this.toNumber(p.anio ?? p.year),
       createdAt: p.fechaPublicacion ?? p.createdAt ?? null,
       updatedAt: p.updatedAt ?? null,
-
-      // métricas/estado si existen en el schema
       state: p.state ?? 'draft',
       visitas: this.toNumber(p.visitas) ?? 0,
       reservas: this.toNumber(p.reservas) ?? 0,
-
       companyName: p.companyName ?? null,
       contactName: p.contactName ?? null,
       phone: p.contactPhone ?? p.phone ?? null,
       email: p.contactEmail ?? p.email ?? null,
       whatsapp: p.whatsapp ?? null,
       website: p.website ?? null,
-
       metadata: p.metadata ?? null,
+      userId: p.userId ?? null,
+      companyId: p.companyId ?? null,
     };
   }
 
-  // ---------------- Filtros/Orden catálogo ----------------
   private buildWhere(q: ListQuery) {
     const where: AnyObj = {};
-    if (q.tipo) where.tipo = { equals: q.tipo, mode: 'insensitive' } as any;
-    if (q.categoria)
-      where.categoria = { contains: q.categoria, mode: 'insensitive' } as any;
-    if (q.comuna) where.comuna = { equals: q.comuna, mode: 'insensitive' } as any;
+    if (q.tipo) where.tipo = { equals: q.tipo } as any; // equals no acepta mode
+    if (q.categoria) where.categoria = { contains: q.categoria, mode: 'insensitive' } as any;
+    if (q.comuna) where.comuna = { equals: q.comuna } as any;
 
     if (q.ubicacion) {
       where.OR = [
@@ -179,7 +174,6 @@ export class PropertiesService {
     return { id: 'desc' } as any;
   }
 
-  // ---------------- List & Get (catálogo) ----------------
   async list(q: ListQuery) {
     const page = q.page && q.page > 0 ? q.page : 1;
     const limit = q.limit && q.limit > 0 ? q.limit : 12;
@@ -191,26 +185,30 @@ export class PropertiesService {
       take: limit,
     } as any);
 
-    // Tu frontend soporta lista directa y también {items:[]}; aquí devolvemos SOLO lista
     return rows.map((p: any) => this.mapProperty(p));
   }
 
   async getOne(id: number) {
-    const p = await this.prisma.property.findUnique({
-      where: { id } as any,
-    } as any);
+    const p = await this.prisma.property.findUnique({ where: { id } as any } as any);
     if (!p) throw new NotFoundException('Property not found');
     return this.mapProperty(p);
   }
 
-  // ---------------- Create ----------------
-  async create(body: any) {
+  async create(body: any, owner?: Owner) {
     const d = this.normalizeIn(body, false);
+
+    const finalCompanyId =
+      body?.companyId ?? body?.empresaId ?? body?.company_id ?? owner?.companyId ?? undefined;
+    const finalUserId = finalCompanyId ? undefined : owner?.userId ?? undefined;
+
+    if (!finalUserId && !finalCompanyId) {
+      throw new BadRequestException('La propiedad debe tener userId o companyId (dueño).');
+    }
 
     const toDb: AnyObj = {
       titulo: d.title,
       descripcion: d.description ?? '',
-      precio: d.price, // Decimal acepta number; al leer lo convertimos
+      precio: d.price,
       categoria: d.category ?? 'general',
       ubicacion: d.location ?? '',
       comuna: d.comuna ?? null,
@@ -231,13 +229,14 @@ export class PropertiesService {
       whatsapp: d.whatsapp ?? null,
       website: d.website ?? null,
       metadata: d.metadata ?? null,
+      userId: finalUserId ?? null,
+      companyId: finalCompanyId ?? null,
     };
 
     const created = await this.prisma.property.create({ data: toDb } as any);
     return this.mapProperty(created);
   }
 
-  // ---------------- Update ----------------
   async update(id: number, body: any) {
     const d = this.normalizeIn(body, true);
 
@@ -265,6 +264,8 @@ export class PropertiesService {
       ...(d.whatsapp !== undefined && { whatsapp: d.whatsapp }),
       ...(d.website !== undefined && { website: d.website }),
       ...(d.metadata !== undefined && { metadata: d.metadata }),
+      ...(d.userId !== undefined && { userId: d.userId }),
+      ...(d.companyId !== undefined && { companyId: d.companyId }),
     };
 
     const updated = await this.prisma.property.update({
@@ -274,13 +275,11 @@ export class PropertiesService {
     return this.mapProperty(updated);
   }
 
-  // ---------------- Delete ----------------
   async remove(id: number) {
     await this.prisma.property.delete({ where: { id } as any } as any);
     return { ok: true };
   }
 
-  // ---------------- Utils ----------------
   async getComunas() {
     const rows = await this.prisma.property.findMany({
       where: { comuna: { not: null } } as any,
@@ -301,13 +300,12 @@ export class PropertiesService {
     return rows.map((r: any) => r.tipo).filter(Boolean);
   }
 
-  // ================== /me ==================
   private buildOwnerWhere(owner: Owner): AnyObj {
     const AND: AnyObj[] = [];
     if (owner.userId) AND.push({ userId: owner.userId });
     if (owner.companyId) AND.push({ companyId: owner.companyId });
     return AND.length ? { AND } : {};
-  }
+    }
 
   private buildMyWhere(owner: Owner, q: MyListQuery): AnyObj {
     const AND: AnyObj[] = [];

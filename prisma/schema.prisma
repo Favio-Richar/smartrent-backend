@@ -107,7 +107,7 @@ model Property {
 
   // Timestamps
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt @default(now())  // 👈 agrega @default(now())
+  updatedAt DateTime @updatedAt        // ✅ sin @default(now())
 
   userId    Int?
   companyId Int?
@@ -124,6 +124,8 @@ model Property {
   @@index([precio])
   @@index([fechaPublicacion])
   @@index([state])
+  @@index([userId])        // ✅ recomendado
+  @@index([companyId])     // ✅ recomendado
 }
 
 // =========================== JOBS ============================

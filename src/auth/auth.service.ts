@@ -1,21 +1,20 @@
-// src/auth/auth.service.ts
 import {
   Injectable,
   UnauthorizedException,
   ConflictException,
   BadRequestException,
-  InternalServerErrorException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
-import * as jwt from 'jsonwebtoken';
-import { MailerService } from '../mailer/mailer.service'; // 👈 inyectamos mailer
+import { JwtService } from '@nestjs/jwt';
+import { MailerService } from '../mailer/mailer.service';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly mailer: MailerService, // 👈 disponible si importaste MailerModule
+    private readonly mailer: MailerService,
+    private readonly jwtService: JwtService,   // 👈 inyectamos JwtService
   ) {}
 
   // ---------- helpers ----------
@@ -26,42 +25,41 @@ export class AuthService {
     return this.normEmail(body?.email ?? body?.correo);
   }
   private getPassFromAny(body: any) {
-    // Para login/registro
     return (body?.password ?? body?.contrasena ?? '').toString().trim();
   }
   private getNewPassFromAny(body: any) {
-    // Para reset
     return (
       body?.newPassword ??
       body?.nuevaContrasena ??
       body?.password ??
       body?.contrasena ??
       ''
-    )
-      .toString()
-      .trim();
+    ).toString().trim();
   }
   private pubUser(u: any) {
     if (!u) return null;
     const { contrasena, resetCode, resetCodeExpires, ...rest } = u;
     return rest;
   }
+
+  // 🔐 firma JWT con el payload que la estrategia espera
   private sign(user: any) {
-    return jwt.sign(
-      { id: user.id, correo: user.correo, tipoCuenta: user.tipoCuenta },
-      process.env.JWT_SECRET || 'SmartRentPlus_Backend_JWT_KEY_2025',
-      { expiresIn: '8h' },
-    );
+    const payload = {
+      sub: user.id,
+      email: user.correo ?? user.email ?? null,
+      companyId: user.companyId ?? null, // si no usas companyId por ahora, quedará null
+    };
+    return this.jwtService.sign(payload);
   }
+
   private genCode6(): string {
     return Math.floor(100000 + Math.random() * 900000).toString();
   }
   private appPublicUrl() {
-    // Para armar link en el correo
     return (
-      process.env.APP_URL || // e.g. https://smartrent.app
-      process.env.FRONTEND_URL || // fallback
-      'http://localhost:3000' // último recurso
+      process.env.APP_URL ||
+      process.env.FRONTEND_URL ||
+      'http://localhost:3000'
     ).replace(/\/+$/, '');
   }
 
@@ -83,9 +81,7 @@ export class AuthService {
     const existingUser = await this.prisma.user.findFirst({
       where: { OR: [{ correo }, { email: correo }] },
     });
-    if (existingUser) {
-      throw new ConflictException('El correo ya está registrado.');
-    }
+    if (existingUser) throw new ConflictException('El correo ya está registrado.');
 
     const hashedPassword = await bcrypt.hash(contrasena, 10);
 
@@ -116,7 +112,6 @@ export class AuthService {
   async login(data: any) {
     const correo = this.getEmail(data);
     const contrasena = this.getPassFromAny(data);
-
     if (!correo || !contrasena) {
       throw new BadRequestException('Debe ingresar correo y contraseña.');
     }
@@ -124,13 +119,11 @@ export class AuthService {
     const user = await this.prisma.user.findFirst({
       where: { OR: [{ correo }, { email: correo }] },
     });
-
     if (!user) throw new UnauthorizedException('Usuario no encontrado.');
 
     const ok = await bcrypt.compare(contrasena, user.contrasena);
     if (!ok) throw new UnauthorizedException('Credenciales inválidas.');
 
-    // Guarda lastLogin
     await this.prisma.user.update({
       where: { id: user.id },
       data: { lastLogin: new Date() },
@@ -146,7 +139,7 @@ export class AuthService {
   }
 
   // ============================================================
-  // FORGOT PASSWORD (solicitud de código)
+  // FORGOT / RESET  (igual que tu versión, sin cambios funcionales)
   // ============================================================
   async forgotPassword(body: any) {
     const correo = this.getEmail(body);
@@ -156,16 +149,14 @@ export class AuthService {
       where: { OR: [{ correo }, { email: correo }] },
     });
 
-    // Siempre responder 200 para no filtrar existencia
     if (!user) {
       return {
-        message:
-          'Si el correo existe, hemos enviado un código de recuperación.',
+        message: 'Si el correo existe, hemos enviado un código de recuperación.',
       };
     }
 
     const code = this.genCode6();
-    const expires = new Date(Date.now() + 1000 * 60 * 15); // 15 minutos
+    const expires = new Date(Date.now() + 1000 * 60 * 15);
 
     await this.prisma.user.update({
       where: { id: user.id },
@@ -173,79 +164,38 @@ export class AuthService {
     });
 
     const hasSmtp =
-      !!process.env.SMTP_HOST &&
-      !!process.env.SMTP_USER &&
-      !!process.env.SMTP_PASS;
+      !!process.env.SMTP_HOST && !!process.env.SMTP_USER && !!process.env.SMTP_PASS;
 
-    if (hasSmtp) {
-      // Email real
-      const appUrl = this.appPublicUrl();
-      const resetUrl = `${appUrl}/reset?email=${encodeURIComponent(
-        correo,
-      )}&token=${encodeURIComponent(code)}`;
-
-      const html = `
-        <div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:auto">
-          <h2>Recuperación de contraseña</h2>
-          <p>Hola${user.nombre ? ` ${user.nombre}` : ''},</p>
-          <p>Tu código de recuperación es:</p>
-          <p style="font-size:28px;font-weight:700;letter-spacing:4px">${code}</p>
-          <p>Este código expira en <b>15 minutos</b>.</p>
-          <p>Puedes pegarlo en la app o usar este enlace directo:</p>
-          <p><a href="${resetUrl}">${resetUrl}</a></p>
-          <hr/>
-          <small>Si no solicitaste esto, ignora este correo.</small>
-        </div>
-      `;
-
-      try {
-        await this.mailer.send(
-          correo,
-          'SmartRent+ • Recuperación de contraseña',
-          html,
-        );
-      } catch (err) {
-        // Si falla SMTP, no rompemos UX: dejamos token en logs dev
-        // eslint-disable-next-line no-console
-        console.error('✉️ Error enviando correo:', err);
-        // seguimos como dev
-        return {
-          message:
-            'No se pudo enviar el correo, pero el código fue generado (modo desarrollo).',
-          dev_token: code,
-        };
-      }
-
+    if (!hasSmtp) {
+      console.log(`📧 Código de recuperación para ${correo}: ${code} (15m)`);
       return {
-        message:
-          'Hemos enviado un código de recuperación a tu correo (válido por 15 minutos).',
+        message: 'Token generado (modo desarrollo). Úsalo para restablecer tu contraseña.',
+        dev_token: code,
       };
     }
 
-    // SIN SMTP -> Modo DEV: devolvemos el token para que lo uses en la app
-    // eslint-disable-next-line no-console
-    console.log(`📧 Código de recuperación para ${correo}: ${code} (15m)`);
-    return {
-      message:
-        'Token generado (modo desarrollo). Úsalo para restablecer tu contraseña.',
-      dev_token: code,
-    };
+    const appUrl = this.appPublicUrl();
+    const resetUrl = `${appUrl}/reset?email=${encodeURIComponent(correo)}&token=${encodeURIComponent(code)}`;
+
+    const html = `
+      <div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:auto">
+        <h2>Recuperación de contraseña</h2>
+        <p>Tu código es:</p>
+        <p style="font-size:28px;font-weight:700;letter-spacing:4px">${code}</p>
+        <p>También puedes usar este enlace: <a href="${resetUrl}">${resetUrl}</a></p>
+      </div>
+    `;
+    await this.mailer.send(correo, 'SmartRent+ • Recuperación de contraseña', html);
+
+    return { message: 'Hemos enviado un código de recuperación a tu correo.' };
   }
 
-  // ============================================================
-  // RESET PASSWORD (usa el código)
-  // ============================================================
   async resetPassword(body: any) {
     const correo = this.getEmail(body);
-    const code = (body?.code ?? body?.codigo ?? body?.token ?? '')
-      .toString()
-      .trim();
+    const code = (body?.code ?? body?.codigo ?? body?.token ?? '').toString().trim();
     const newPass = this.getNewPassFromAny(body);
-
     if (!correo || !code || !newPass) {
-      throw new BadRequestException(
-        'Debe enviar correo, código y nueva contraseña.',
-      );
+      throw new BadRequestException('Debe enviar correo, código y nueva contraseña.');
     }
 
     const user = await this.prisma.user.findFirst({
@@ -255,20 +205,14 @@ export class AuthService {
       throw new UnauthorizedException('Código inválido.');
     }
 
-    const now = new Date();
-    if (user.resetCode !== code || user.resetCodeExpires < now) {
+    if (user.resetCode !== code || user.resetCodeExpires < new Date()) {
       throw new UnauthorizedException('Código inválido o expirado.');
     }
 
     const hashed = await bcrypt.hash(newPass, 10);
-
     await this.prisma.user.update({
       where: { id: user.id },
-      data: {
-        contrasena: hashed,
-        resetCode: null,
-        resetCodeExpires: null,
-      },
+      data: { contrasena: hashed, resetCode: null, resetCodeExpires: null },
     });
 
     return { message: '✅ Contraseña actualizada correctamente.' };

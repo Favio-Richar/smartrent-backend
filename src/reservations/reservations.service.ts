@@ -1,4 +1,3 @@
-// src/reservations/reservations.service.ts
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -46,7 +45,7 @@ export class ReservationsService {
     const propertyId = this.extractPropertyId(dto);
     if (!propertyId) throw new Error('property_id / propiedad_id es requerido');
 
-    // ✅ Evita P2003: asegúrate de que existan las FKs
+    // Evita P2003
     const userExists = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!userExists) throw new Error(`Usuario ${userId} no existe`);
     const propExists = await this.prisma.property.findUnique({ where: { id: propertyId } });
@@ -117,8 +116,14 @@ export class ReservationsService {
   async findReceived(ownerId: number) {
     if (this.hasModel) {
       const p = this.prisma as any;
+      // Relational filter correcto con "is"
       return p.reservation.findMany({
-        where: { OR: [{ property: { userId: ownerId } }, { property: { companyId: ownerId } }] },
+        where: {
+          OR: [
+            { property: { is: { userId: ownerId } } },
+            { property: { is: { companyId: ownerId } } },
+          ],
+        },
         include: { property: true, user: true },
         orderBy: { createdAt: 'desc' },
       });
