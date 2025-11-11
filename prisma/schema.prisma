@@ -1,5 +1,6 @@
 // =============================================================
 // SMARTRENT+ - Prisma Schema (PostgreSQL)
+// Versión multimedia final 2025 (con módulo Soporte completo)
 // =============================================================
 
 generator client {
@@ -11,7 +12,9 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ---------- Estado de Propiedad ----------
+// =============================================================
+// ENUMS
+// =============================================================
 enum PropertyState {
   draft
   published
@@ -19,7 +22,9 @@ enum PropertyState {
   archived
 }
 
-// ========================= USERS =============================
+// =============================================================
+// USERS
+// =============================================================
 model User {
   id               Int       @id @default(autoincrement())
   nombre           String
@@ -41,20 +46,25 @@ model User {
   resetCode        String?
   resetCodeExpires DateTime?
 
-  publicaciones Property[]
-  empleos       Job[]           @relation("UserJobs")
-  favoritos     Favorite[]
-  comentarios   Comment[]
-  postulaciones Application[]
-  tickets       SupportTicket[]
-  reservations  Reservation[] // reservas hechas por este usuario
+  publicaciones       Property[]
+  empleos             Job[]                 @relation("UserJobs")
+  favoritos           Favorite[]
+  comentarios         Comment[]
+  postulaciones       Application[]
+  tickets             SupportTicket[]
+  reservations        Reservation[]
+  feedbacks           Feedback[]
+  SubscriptionPayment SubscriptionPayment[]
+  ActiveSubscription  ActiveSubscription[]
 
   @@index([tipoCuenta])
   @@index([fechaRegistro])
   @@index([resetCode])
 }
 
-// ======================== COMPANIES ==========================
+// =============================================================
+// COMPANIES
+// =============================================================
 model Company {
   id            Int      @id @default(autoincrement())
   nombreEmpresa String
@@ -72,18 +82,22 @@ model Company {
   @@index([fechaRegistro])
 }
 
-// ======================== PROPERTIES =========================
+// =============================================================
+// PROPERTIES
+// =============================================================
 model Property {
   id               Int      @id @default(autoincrement())
   titulo           String
   descripcion      String
   precio           Float
   categoria        String
-  ubicacion        String
+  ubicacion        String?
   comuna           String?
   tipo             String?
   imagen           String?
+  images           String[] @default([])
   videoUrl         String?
+  videos           String[] @default([])
   latitude         Float?
   longitude        Float?
   destacado        Boolean  @default(false)
@@ -100,15 +114,18 @@ model Property {
   whatsapp         String?
   website          String?
 
-  // Métricas/estado
+  // 📊 Métricas
   visitas  Int           @default(0)
   reservas Int           @default(0)
   state    PropertyState @default(draft)
+  status   String?
+  views    Int           @default(0)
 
-  // Timestamps
+  // 📅 Fechas
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt        // ✅ sin @default(now())
+  updatedAt DateTime @updatedAt
 
+  // 🔗 Relaciones
   userId    Int?
   companyId Int?
 
@@ -116,7 +133,7 @@ model Property {
   company      Company?      @relation(fields: [companyId], references: [id])
   comentarios  Comment[]
   favoritos    Favorite[]
-  reservations Reservation[] // reservas sobre esta propiedad
+  reservations Reservation[]
 
   @@index([categoria])
   @@index([comuna])
@@ -124,11 +141,14 @@ model Property {
   @@index([precio])
   @@index([fechaPublicacion])
   @@index([state])
-  @@index([userId])        // ✅ recomendado
-  @@index([companyId])     // ✅ recomendado
+  @@index([status])
+  @@index([userId])
+  @@index([companyId])
 }
 
-// =========================== JOBS ============================
+// =============================================================
+// JOBS
+// =============================================================
 model Job {
   id               Int      @id @default(autoincrement())
   titulo           String
@@ -152,7 +172,9 @@ model Job {
   @@index([fechaPublicacion])
 }
 
-// ======================== APPLICATIONS =======================
+// =============================================================
+// APPLICATIONS
+// =============================================================
 model Application {
   id               Int      @id @default(autoincrement())
   userId           Int
@@ -169,7 +191,9 @@ model Application {
   @@index([fechaPostulacion])
 }
 
-// ======================= SUBSCRIPTIONS =======================
+// =============================================================
+// SUBSCRIPTIONS
+// =============================================================
 model Subscription {
   id           Int     @id @default(autoincrement())
   nombrePlan   String
@@ -181,7 +205,9 @@ model Subscription {
   @@index([nivel])
 }
 
-// ========================= FAVORITES =========================
+// =============================================================
+// FAVORITES
+// =============================================================
 model Favorite {
   id         Int  @id @default(autoincrement())
   userId     Int
@@ -197,7 +223,9 @@ model Favorite {
   @@index([jobId])
 }
 
-// ========================== COMMENTS =========================
+// =============================================================
+// COMMENTS
+// =============================================================
 model Comment {
   id         Int      @id @default(autoincrement())
   contenido  String
@@ -213,23 +241,58 @@ model Comment {
   @@index([fecha])
 }
 
-// ====================== SUPPORT TICKETS ======================
+// =============================================================
+// SUPPORT TICKETS (Módulo Soporte)
+// =============================================================
 model SupportTicket {
-  id            Int      @id @default(autoincrement())
-  asunto        String
-  descripcion   String
-  estado        String   @default("Pendiente")
-  fechaCreacion DateTime @default(now())
-
-  userId Int?
-  user   User? @relation(fields: [userId], references: [id])
+  id          Int      @id @default(autoincrement())
+  subject     String
+  description String
+  category    String?  @default("General")
+  imageBase64 String?
+  status      String   @default("Pendiente")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt // ✅ agregado con valor por defecto
+  userId      Int?
+  user        User?    @relation(fields: [userId], references: [id])
+  respuesta   String?  @db.Text
 
   @@index([userId])
-  @@index([estado])
-  @@index([fechaCreacion])
+  @@index([status])
+  @@index([createdAt])
 }
 
-// ========================= RESERVATIONS ======================
+// =============================================================
+// FEEDBACK (Valoraciones del soporte)
+// =============================================================
+model Feedback {
+  id        Int      @id @default(autoincrement())
+  rating    Int
+  comment   String?
+  respuesta String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt // ✅ también con default
+  userId    Int?
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([rating])
+  @@index([createdAt])
+}
+
+// =============================================================
+// FAQ (Preguntas frecuentes para soporte)
+// =============================================================
+model Faq {
+  id        Int      @id @default(autoincrement())
+  question  String
+  answer    String
+  createdAt DateTime @default(now())
+}
+
+// =============================================================
+// RESERVATIONS
+// =============================================================
 model Reservation {
   id         Int      @id @default(autoincrement())
   propertyId Int
@@ -238,7 +301,7 @@ model Reservation {
   endDate    DateTime
   message    String?  @db.Text
   people     Int      @default(1)
-  status     String   @default("Pendiente") // Pendiente | Aprobada | Cancelada
+  status     String   @default("Pendiente")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -249,4 +312,62 @@ model Reservation {
   @@index([userId])
   @@index([status])
   @@index([createdAt])
+}
+
+// =============================================================
+// COMMUNITY POSTS
+// =============================================================
+model CommunityPost {
+  id        Int      @id @default(autoincrement())
+  author    String
+  title     String
+  body      String
+  createdAt DateTime @default(now())
+}
+
+// =============================================================
+// PAGOS Y SUSCRIPCIONES (Webpay / Transbank SDK)
+// =============================================================
+model SubscriptionPayment {
+  id                Int       @id @default(autoincrement())
+  userId            Int
+  plan              String
+  buyOrder          String    @unique
+  token             String    @unique // ✅ ahora es único
+  amount            Float
+  status            String    @default("PENDING")
+  paymentType       String?
+  authorizationCode String? // ✅ nuevo campo
+  cardLast4         String? // ✅ nuevo campo
+  transactionDate   DateTime?
+  confirmedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime? @updatedAt // ✅ opcional para trazabilidad
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([plan])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model ActiveSubscription {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  plan      String
+  startDate DateTime @default(now())
+  endDate   DateTime
+  autoRenew Boolean  @default(true)
+  status    String   @default("ACTIVE")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, plan, status])
+  @@index([userId])
+  @@index([plan])
+  @@index([status])
+  @@index([endDate])
 }

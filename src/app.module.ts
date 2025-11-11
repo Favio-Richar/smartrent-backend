@@ -1,9 +1,12 @@
-// src/app.module.ts
 import { Module } from '@nestjs/common';
+import { join } from 'path';
+import { ServeStaticModule } from '@nestjs/serve-static';
+
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { PrismaService } from './prisma/prisma.service';
 
-// 🔹 Módulos funcionales
+// ====== Módulos principales ======
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { CompaniesModule } from './companies/companies.module';
@@ -13,15 +16,29 @@ import { SalesModule } from './sales/sales.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { AdminModule } from './admin/admin.module';
 import { SupportModule } from './support/support.module';
-
-// ✅ NUEVO: módulo de reservas
+import { UploadsModule } from './uploads/uploads.module';
 import { ReservationsModule } from './reservations/reservations.module';
 
-// 🔹 Prisma Service (conexión central a la BD)
-import { PrismaService } from './prisma/prisma.service';
+// ✅ Nuevo módulo de estadísticas
+import { EstadisticasModule } from './estadisticas/estadisticas.module';
+
+// ✅ Nuevo módulo de pagos (Webpay / Transbank)
+import { PaymentsModule } from './subscriptions/payments.module';
 
 @Module({
   imports: [
+    // ========= 📂 SERVIR ARCHIVOS ESTÁTICOS =========
+    ServeStaticModule.forRoot({
+      rootPath: join(process.cwd(), 'uploads'),
+      serveRoot: '/uploads',
+    }),
+
+    ServeStaticModule.forRoot({
+      rootPath: join(process.cwd(), 'public'),
+      serveRoot: '/public',
+    }),
+
+    // ========= 🔑 MÓDULOS FUNCIONALES PRINCIPALES =========
     AuthModule,
     UsersModule,
     CompaniesModule,
@@ -31,14 +48,15 @@ import { PrismaService } from './prisma/prisma.service';
     SubscriptionsModule,
     AdminModule,
     SupportModule,
-
-    // 👇 muy importante: ahora Nest sí expone /api/reservas/...
+    UploadsModule,
     ReservationsModule,
+    EstadisticasModule,
+
+    // ========= 💳 MÓDULO DE PAGOS WEBPAY =========
+    PaymentsModule,
   ],
   controllers: [AppController],
-  providers: [
-    AppService,
-    
-  ],
+  providers: [AppService, PrismaService],
+  exports: [PrismaService],
 })
 export class AppModule {}

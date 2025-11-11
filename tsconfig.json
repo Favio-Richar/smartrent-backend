@@ -1,25 +1,45 @@
 {
   "compilerOptions": {
-    "module": "nodenext",
-    "moduleResolution": "nodenext",
-    "resolvePackageJsonExports": true,
-    "esModuleInterop": true,
-    "isolatedModules": true,
+    "target": "ES2022",
+    "module": "Node16",                     
+    "moduleResolution": "Node16",
+    "lib": ["ES2022"],
+    "rootDir": "./",                        
+    "outDir": "./dist",
+
+    "baseUrl": "./",
+    "paths": {
+      "@/*": ["src/*"]                      // ✅ alias absoluto para imports limpios
+    },
+    "types": ["node"],                      
+
+    "sourceMap": true,
+    "incremental": true,
     "declaration": true,
     "removeComments": true,
+
+    "strict": true,
+    "noImplicitAny": false,
+    "strictNullChecks": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
+
+    "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    "target": "ES2023",
-    "sourceMap": true,
-    "outDir": "./dist",
-    "baseUrl": "./",
-    "incremental": true,
-    "skipLibCheck": true,
-    "strictNullChecks": true,
-    "forceConsistentCasingInFileNames": true,
-    "noImplicitAny": false,
-    "strictBindCallApply": false,
-    "noFallthroughCasesInSwitch": false
-  }
+
+    // ✅ NUEVOS AJUSTES RECOMENDADOS
+    "resolveJsonModule": true,              // permite importar archivos .json (útil para config)
+    "allowJs": false,                       // solo código TypeScript
+    "noFallthroughCasesInSwitch": true,     // evita errores en switch sin break
+    "noImplicitReturns": true,              // obliga a retornar en todas las ramas
+    "noUnusedLocals": false,                // permite código comentado temporal
+    "noUnusedParameters": false,            // evita advertencias innecesarias
+    "useUnknownInCatchVariables": false,    // compatibilidad con Node y NestJS
+    "importsNotUsedAsValues": "remove"      // optimiza imports solo de tipos
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
 }
