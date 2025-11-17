@@ -26,20 +26,25 @@ enum PropertyState {
 // USERS
 // =============================================================
 model User {
-  id               Int       @id @default(autoincrement())
-  nombre           String
-  correo           String    @unique
-  email            String?   @unique
-  contrasena       String
-  telefono         String?
-  ciudad           String?
-  imagen           String?
-  bio              String?   @db.Text
-  facebook         String?
-  instagram        String?
-  linkedin         String?
-  web              String?
-  tipoCuenta       String    @default("Usuario")
+  id         Int     @id @default(autoincrement())
+  nombre     String
+  correo     String  @unique
+  email      String? @unique
+  contrasena String
+  telefono   String?
+  ciudad     String?
+  imagen     String?
+  bio        String? @db.Text
+  facebook   String?
+  instagram  String?
+  linkedin   String?
+  web        String?
+  tipoCuenta String  @default("Usuario")
+
+  // 🔥 AGREGADO → Nivel de suscripción para roles
+
+  suscripcionNivel String @default("free")
+
   fechaRegistro    DateTime  @default(now())
   isActive         Boolean   @default(true)
   lastLogin        DateTime?
@@ -56,6 +61,8 @@ model User {
   feedbacks           Feedback[]
   SubscriptionPayment SubscriptionPayment[]
   ActiveSubscription  ActiveSubscription[]
+  invoices            Invoice[] // 🔥 AGREGADO
+  Company             Company[]
 
   @@index([tipoCuenta])
   @@index([fechaRegistro])
@@ -66,14 +73,27 @@ model User {
 // COMPANIES
 // =============================================================
 model Company {
-  id            Int      @id @default(autoincrement())
+  id            Int     @id @default(autoincrement())
+  rutEmpresa    String?
   nombreEmpresa String
-  correo        String   @unique
+  correo        String  @unique
   contrasena    String
-  telefono      String?
-  direccion     String?
-  descripcion   String?
-  logo          String?
+
+  telefono    String?
+  direccion   String?
+  descripcion String?
+  logo        String?
+
+  encargado     String?
+  dueno         String?
+  horaApertura  String?
+  horaCierre    String?
+  diasOperacion String?
+  sitioWeb      String?
+
+  userId Int?  @db.Integer
+  user   User? @relation(fields: [userId], references: [id])
+
   fechaRegistro DateTime @default(now())
 
   empleos     Job[]
@@ -242,7 +262,7 @@ model Comment {
 }
 
 // =============================================================
-// SUPPORT TICKETS (Módulo Soporte)
+// SUPPORT TICKETS
 // =============================================================
 model SupportTicket {
   id          Int      @id @default(autoincrement())
@@ -252,7 +272,7 @@ model SupportTicket {
   imageBase64 String?
   status      String   @default("Pendiente")
   createdAt   DateTime @default(now())
-  updatedAt   DateTime @default(now()) @updatedAt // ✅ agregado con valor por defecto
+  updatedAt   DateTime @default(now()) @updatedAt
   userId      Int?
   user        User?    @relation(fields: [userId], references: [id])
   respuesta   String?  @db.Text
@@ -263,7 +283,7 @@ model SupportTicket {
 }
 
 // =============================================================
-// FEEDBACK (Valoraciones del soporte)
+// FEEDBACK
 // =============================================================
 model Feedback {
   id        Int      @id @default(autoincrement())
@@ -271,7 +291,7 @@ model Feedback {
   comment   String?
   respuesta String?  @db.Text
   createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt // ✅ también con default
+  updatedAt DateTime @default(now()) @updatedAt
   userId    Int?
 
   user User? @relation(fields: [userId], references: [id])
@@ -281,7 +301,7 @@ model Feedback {
 }
 
 // =============================================================
-// FAQ (Preguntas frecuentes para soporte)
+// FAQ
 // =============================================================
 model Faq {
   id        Int      @id @default(autoincrement())
@@ -326,36 +346,42 @@ model CommunityPost {
 }
 
 // =============================================================
-// PAGOS Y SUSCRIPCIONES (Webpay / Transbank SDK)
+// PAGOS Y SUSCRIPCIONES
 // =============================================================
 model SubscriptionPayment {
   id                Int       @id @default(autoincrement())
   userId            Int
   plan              String
-  buyOrder          String    @unique
-  token             String    @unique // ✅ ahora es único
-  amount            Float
+  buyOrder          String
+  token             String    @unique
+  amount            Int
   status            String    @default("PENDING")
   paymentType       String?
-  authorizationCode String? // ✅ nuevo campo
-  cardLast4         String? // ✅ nuevo campo
+  authorizationCode String?
+  cardLast4         String?
   transactionDate   DateTime?
   confirmedAt       DateTime?
   createdAt         DateTime  @default(now())
-  updatedAt         DateTime? @updatedAt // ✅ opcional para trazabilidad
+  updatedAt         DateTime? @updatedAt
 
-  user User @relation(fields: [userId], references: [id])
+  user     User      @relation(fields: [userId], references: [id])
+  invoices Invoice[] // 🔥 AGREGADO — relación inversa
 
   @@index([userId])
   @@index([plan])
   @@index([status])
   @@index([createdAt])
+  @@index([token, status])
 }
 
 model ActiveSubscription {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  plan      String
+  id     Int    @id @default(autoincrement())
+  userId Int
+  plan   String
+
+  // 🔥 AGREGADO → nivel del plan (pro, premium, advance)
+  nivel String @default("basic")
+
   startDate DateTime @default(now())
   endDate   DateTime
   autoRenew Boolean  @default(true)
@@ -365,9 +391,30 @@ model ActiveSubscription {
 
   user User @relation(fields: [userId], references: [id])
 
-  @@unique([userId, plan, status])
+  @@index([userId, plan, status])
   @@index([userId])
   @@index([plan])
   @@index([status])
   @@index([endDate])
+}
+
+// =============================================================
+// INVOICES (Boletas PDF generadas por WebPay)
+// =============================================================
+model Invoice {
+  id                Int      @id @default(autoincrement())
+  userId            Int
+  paymentId         Int // relación con SubscriptionPayment
+  pdfUrl            String // ruta del archivo PDF generado
+  amount            Int
+  plan              String
+  authorizationCode String?
+  last4             String?
+  createdAt         DateTime @default(now())
+
+  user    User                @relation(fields: [userId], references: [id])
+  payment SubscriptionPayment @relation(fields: [paymentId], references: [id])
+
+  @@index([userId])
+  @@index([paymentId])
 }

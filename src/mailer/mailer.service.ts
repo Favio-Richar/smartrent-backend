@@ -8,64 +8,104 @@ export class MailerService {
   private transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: parseInt(process.env.SMTP_PORT || '587', 10),
-    secure: (process.env.SMTP_PORT || '') === '465', // true si usas 465 (SSL)
+    secure: (process.env.SMTP_PORT || '') === '465',
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
   });
 
-  /**
-   * Envío genérico
-   */
-  async send(to: string, subject: string, html: string) {
+  // ===========================================================
+  // 🔹 Control global: si DISABLE_EMAIL=true el correo NO se envía
+  // ===========================================================
+  private skipEmailIfDisabled() {
+    if (process.env.DISABLE_EMAIL === 'true') {
+      this.logger.warn('📨 Envío de correo DESHABILITADO en modo desarrollo.');
+      return true;
+    }
+    return false;
+  }
+
+  // ===========================================================
+  // 🔹 Envío genérico de correo
+  // ===========================================================
+  async send(to: string, subject: string, html: string, attachments: any[] = []) {
     const from = process.env.SMTP_FROM || 'SmartRent+ <no-reply@smartrent.com>';
 
-    // Validación básica de configuración
+    // ⛔ Evita error si está deshabilitado
+    if (this.skipEmailIfDisabled()) return;
+
+    // ⛔ Si faltan credenciales no intentar enviar
     if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
-      this.logger.warn(
-        'SMTP no configurado. Define SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS y SMTP_FROM en .env',
-      );
-      // No lanzamos error para no romper flujo en dev, pero avisamos.
+      this.logger.warn('⚠️ SMTP no configurado correctamente. Se omitió el envío.');
       return;
     }
 
-    await this.transporter.sendMail({ from, to, subject, html });
-    this.logger.log(`Correo enviado a ${to} (${subject})`);
+    await this.transporter.sendMail({
+      from,
+      to,
+      subject,
+      html,
+      attachments,
+    });
+
+    this.logger.log(`📨 Correo enviado: ${subject} → ${to}`);
   }
 
-  /**
-   * Correo de restablecimiento de contraseña con código y link
-   */
+  // ===========================================================
+  // 🔹 Envío BOLETA PDF
+  // ===========================================================
+  async sendInvoiceEmail(
+    to: string,
+    pdfPath: string,
+    meta: {
+      monto: number;
+      plan: string;
+      codigo: string;
+      fecha: Date;
+    },
+  ) {
+    const subject = `📄 Boleta de Suscripción - ${meta.plan}`;
+
+    const html = `
+      <div style="font-family: Arial; max-width:600px; margin:0 auto;">
+        <h2 style="color:#005CEE;">SmartRent+ • Confirmación de pago</h2>
+        <p>Tu suscripción al plan <strong>${meta.plan}</strong> fue procesada.</p>
+
+        <ul>
+          <li><strong>Monto:</strong> $${meta.monto}</li>
+          <li><strong>Código autorización:</strong> ${meta.codigo}</li>
+          <li><strong>Fecha:</strong> ${meta.fecha}</li>
+        </ul>
+
+        <p>Tu boleta viene adjunta en PDF.</p>
+      </div>
+    `;
+
+    return this.send(to, subject, html, [
+      {
+        filename: 'boleta.pdf',
+        path: pdfPath,
+      },
+    ]);
+  }
+
+  // ===========================================================
+  // 🔹 Reset password
+  // ===========================================================
   async sendResetPassword(to: string, code: string, resetLink: string) {
     const subject = 'Recuperación de contraseña - SmartRent+';
-    const html = this.resetPasswordTemplate(code, resetLink);
+    const html = this.passwordTemplate(code, resetLink);
     return this.send(to, subject, html);
   }
 
-  /**
-   * HTML del correo de recuperación
-   */
-  private resetPasswordTemplate(code: string, link: string) {
+  private passwordTemplate(code: string, link: string) {
     return `
-      <div style="font-family: Arial, Helvetica, sans-serif; max-width:600px; margin:0 auto;">
-        <h2 style="color:#0066FF;">SmartRent+ • Recuperación de contraseña</h2>
-        <p>Recibimos una solicitud para restablecer tu contraseña.</p>
-        <p><strong>Código de verificación:</strong></p>
-        <div style="font-size:28px; font-weight:bold; letter-spacing:3px; background:#f2f4ff; padding:12px 16px; border-radius:8px; display:inline-block;">
-          ${code}
-        </div>
-        <p style="margin-top:18px;">También puedes hacerlo con este enlace:</p>
-        <p>
-          <a href="${link}" style="background:#0066FF; color:#ffffff; text-decoration:none; padding:10px 14px; border-radius:8px; display:inline-block;">
-            Restablecer contraseña
-          </a>
-        </p>
-        <p style="margin-top:18px; color:#666;">
-          El código y el enlace expiran en 15 minutos. Si no solicitaste este cambio, ignora este mensaje.
-        </p>
-        <hr style="border:none; border-top:1px solid #eee; margin:24px 0;" />
-        <p style="font-size:12px; color:#999;">© ${new Date().getFullYear()} SmartRent+</p>
+      <div style="font-family: Arial;">
+        <h2>SmartRent+ – Recuperación de contraseña</h2>
+        <p>Tu código es: <strong>${code}</strong></p>
+        <p>O haz clic aquí:</p>
+        <a href="${link}">Restablecer contraseña</a>
       </div>
     `;
   }

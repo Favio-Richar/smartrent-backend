@@ -6,6 +6,7 @@ type JwtPayload = {
   sub: number;
   email?: string;
   companyId?: number;
+  nivel?: string; // 🔥 agregado
   iat?: number;
   exp?: number;
 };
@@ -25,6 +26,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       id: payload.sub,
       email: payload.email,
       companyId: payload.companyId ?? null,
+      suscripcionNivel: payload.nivel ?? 'basic', // 🔥 agregado
     };
   }
 }

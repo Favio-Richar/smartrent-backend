@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import { SubscriptionsController } from './subscriptions.controller';
-import { SubscriptionsService } from './subscriptions.service';
-import { PaymentsModule } from './payments.module'; // ✅ mismo nivel de carpeta
+import { PaymentsService } from './payments.service';
+import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
-  imports: [PaymentsModule], // ✅ importar el módulo de pagos
+  imports: [PrismaModule],
   controllers: [SubscriptionsController],
-  providers: [SubscriptionsService],
+  providers: [PaymentsService],
 })
 export class SubscriptionsModule {}
