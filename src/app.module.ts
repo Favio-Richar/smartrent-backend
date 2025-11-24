@@ -2,10 +2,10 @@
 // 🚀 APP MODULE – SmartRent+ Backend (Versión Final Actualizada)
 // ---------------------------------------------------------------
 // 🔥 Compatible con WebPay (sandbox + producción)
-// 🔥 Maneja archvos PDF / boletas en /public
+// 🔥 Manejo de archivos PDF / boletas en /public
 // 🔥 Configuración global .env mejorada
-// 🔥 Listo para sistema de roles por suscripción
-// 🔥 NO se borró nada de tu módulo original
+// 🔥 Roles por suscripción activo
+// 🔥 Comentarios y Perfil Social (posts, likes, comentarios)
 // ===============================================================
 
 import { Module } from '@nestjs/common';
@@ -18,7 +18,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaService } from './prisma/prisma.service';
 
-// ====== Módulos funcionales ======
+// ====== Módulos funcionales existentes ======
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { CompaniesModule } from './companies/companies.module';
@@ -32,27 +32,31 @@ import { ReservationsModule } from './reservations/reservations.module';
 import { EstadisticasModule } from './estadisticas/estadisticas.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { InvoiceModule } from './invoice/invoice.module';
+
+// ⭐⭐⭐ COMENTARIOS
+import { ComentariosModule } from './comentarios/comentarios.module';
+
+// ⭐⭐⭐ PUBLICACIONES DEL PERFIL
+import { ProfilePostModule } from './profile-post/profile-post.module';
+
+// ⭐⭐⭐ NUEVO: PUBLICACIONES ADMIN (MODERACIÓN)
+import { AdminPublicacionesModule } from './admin-publicaciones/admin-publicaciones.module';
+
 @Module({
   imports: [
-    // ===========================================================
+    // ================================================
     // 🌍 Configuración global (.env)
-    // -----------------------------------------------------------
-    // Se cargan todas las variables de entorno
-    // Disponible para TODO el backend
-    // ===========================================================
+    // ================================================
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
       cache: true,
-      expandVariables: true, // 🔥 permite usar ${VAR} dentro de .env
+      expandVariables: true,
     }),
 
-    // ===========================================================
-    // 📂 Archivos estáticos (uploads y public)
-    // -----------------------------------------------------------
-    // 🔥 Aquí irán las BOLETAS PDF generadas
-    // /public/boletas/*
-    // ===========================================================
+    // ================================================
+    // 📂 Archivos estáticos
+    // ================================================
     ServeStaticModule.forRoot({
       rootPath: join(process.cwd(), 'uploads'),
       serveRoot: '/uploads',
@@ -63,9 +67,9 @@ import { InvoiceModule } from './invoice/invoice.module';
       serveRoot: '/public',
     }),
 
-    // ===========================================================
-    // 🔑 Módulos funcionales principales
-    // ===========================================================
+    // ================================================
+    // 🔑 Módulos principales
+    // ================================================
     AuthModule,
     UsersModule,
     CompaniesModule,
@@ -79,19 +83,24 @@ import { InvoiceModule } from './invoice/invoice.module';
     EstadisticasModule,
     InvoiceModule,
 
-    // ===========================================================
-    // 💳 Módulo de suscripciones y WebPay
-    // ===========================================================
+    // 💳 Suscripciones
     SubscriptionsModule,
+
+    // ⭐ Comentarios
+    ComentariosModule,
+
+    // ⭐ Publicaciones de usuario
+    ProfilePostModule,
+
+    // ⭐ Publicaciones del ADMIN (MODERACIÓN)
+    AdminPublicacionesModule,
   ],
+
   controllers: [AppController],
+
   providers: [
     AppService,
     PrismaService,
-
-    // 🔥 Aquí puedes agregar providers globales luego:
-    // RolesService,
-    // PdfService,
   ],
 
   exports: [PrismaService],

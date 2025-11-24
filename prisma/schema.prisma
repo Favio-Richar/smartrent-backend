@@ -39,6 +39,7 @@ model User {
   instagram  String?
   linkedin   String?
   web        String?
+  whatsapp   String?     // 👈 AGREGADO
   tipoCuenta String  @default("Usuario")
 
   // 🔥 AGREGADO → Nivel de suscripción para roles
@@ -63,6 +64,30 @@ model User {
   ActiveSubscription  ActiveSubscription[]
   invoices            Invoice[] // 🔥 AGREGADO
   Company             Company[]
+  ratings             Rating[]
+  reactions           Reaction[]
+  portada    String?     // 👈 AGREGADO
+
+    // ===========================
+  // CONFIGURACIONES DE PERFIL
+  // ===========================
+
+  darkMode         Boolean  @default(false)
+  animacionesPerfil Boolean @default(true)
+  mostrarPortada   Boolean  @default(true)
+  estiloTarjetas   String?  @default("moderno")
+  colorTema        String?  @default("azul")
+  fontSize         Float?   @default(1.0)
+
+  // PRIVACIDAD
+  perfilPrivado    Boolean  @default(false)
+  mostrarRedes     Boolean  @default(true)
+  mostrarContacto  Boolean  @default(true)
+
+
+  profilePosts    ProfilePost[]
+  profileLikes    ProfileLike[]
+  profileComments ProfileComment[]
 
   @@index([tipoCuenta])
   @@index([fechaRegistro])
@@ -154,6 +179,8 @@ model Property {
   comentarios  Comment[]
   favoritos    Favorite[]
   reservations Reservation[]
+  ratings      Rating[]
+  reactions    Reaction[]
 
   @@index([categoria])
   @@index([comuna])
@@ -417,4 +444,96 @@ model Invoice {
 
   @@index([userId])
   @@index([paymentId])
+}
+
+// =============================================================
+// RATINGS (CALIFICACIÓN DE PROPIEDADES)
+// =============================================================
+model Rating {
+  id         Int      @id @default(autoincrement())
+  score      Int // 1 a 5
+  userId     Int
+  propertyId Int
+  createdAt  DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id])
+  property Property @relation(fields: [propertyId], references: [id])
+
+  @@unique([userId, propertyId]) // ✔ evita calificar dos veces
+  @@index([propertyId])
+}
+
+// =============================================================
+// REACTIONS (LIKE / LOVE / WOW / FIRE)
+// =============================================================
+model Reaction {
+  id         Int      @id @default(autoincrement())
+  tipo       String // like, love, wow, fire
+  userId     Int
+  propertyId Int
+  createdAt  DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id])
+  property Property @relation(fields: [propertyId], references: [id])
+
+  @@unique([userId, propertyId, tipo]) // ✔ evita spamear reacciones
+  @@index([propertyId])
+}
+
+model ProfilePost {
+  id          Int       @id @default(autoincrement())
+  userId      Int
+  tipo        String    @default("text") // text | image | video
+  texto       String
+  titulo      String?                      // opcional
+  imagen      String?                      // URL de imagen
+  video       String?                      // URL de video
+  miniatura   String?                      // thumbnail para videos
+  duracion    Int?                         // duración del video en segundos
+  ubicacion   String?                      // lugar del post
+  tags        String?                      // "#departamento,#arriendo"
+  isPublic    Boolean   @default(true)     // público o privado
+
+  createdAt   DateTime  @default(now())
+  editedAt    DateTime?                     // se actualiza si editas el post
+
+  // Relaciones
+  likes       ProfileLike[]
+  comments    ProfileComment[]
+
+  // repost (como compartir publicación)
+  repostId    Int?
+  repost      ProfilePost?   @relation("RepostRelation", fields: [repostId], references: [id])
+  repostedBy  ProfilePost[]  @relation("RepostRelation")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([tipo])
+  @@index([createdAt])
+}
+
+
+
+model ProfileLike {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  postId    Int
+  createdAt DateTime @default(now())
+
+  user User        @relation(fields: [userId], references: [id])
+  post ProfilePost @relation(fields: [postId], references: [id])
+
+  @@unique([userId, postId]) // evita doble like
+}
+
+model ProfileComment {
+  id         Int      @id @default(autoincrement())
+  postId     Int
+  userId     Int
+  comentario String
+  createdAt  DateTime @default(now())
+
+  post ProfilePost @relation(fields: [postId], references: [id])
+  user User        @relation(fields: [userId], references: [id])
 }

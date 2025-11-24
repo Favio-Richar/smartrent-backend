@@ -1,5 +1,5 @@
 // ======================================================================
-// 🚀 MAIN – SmartRent+ Backend (NestJS) – VERSIÓN FINAL 2025
+// 🚀 MAIN – SmartRent+ Backend (NestJS) – VERSIÓN FINAL 2025 + FIX VIDEO
 // ======================================================================
 
 import { NestFactory } from '@nestjs/core';
@@ -22,19 +22,16 @@ async function bootstrap() {
   app.use(bodyParser.json({ limit: '10mb' }));
 
   // -------------------------------------------------------------
-  // 🌐 🚨 FIX OBLIGATORIO PARA WEBPAY (POST x-www-form-urlencoded)
+  // 🌐 🚨 WebPay exige x-www-form-urlencoded
   // -------------------------------------------------------------
   app.use(
     bodyParser.urlencoded({
       limit: '10mb',
-      extended: false,          // <<— ESTO es lo que WebPay exige
+      extended: false,
       parameterLimit: 10000,
       type: 'application/x-www-form-urlencoded'
     }),
   );
-
-  // ⚠️ Tu línea original extended:true queda ANULADA por esta corrección.
-  // app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
 
   // -------------------------------------------------------------
   // 📁 Archivos estáticos
@@ -49,12 +46,27 @@ async function bootstrap() {
   app.use('/public', express.static(publicDir));
 
   // -------------------------------------------------------------
+  // 🔥 FIX CRÍTICO PARA VIDEOS MP4 (Flutter VideoPlayer / Chewie)
+  // -------------------------------------------------------------
+  // Esto permite:
+  // ✔ streaming
+  // ✔ que el video cargue en el emulador Android
+  // ✔ evitar 'loading infinito'
+  // ✔ habilitar rangos de bytes para reproducir mp4
+
+  app.use('/uploads/video', (req, res, next) => {
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Accept-Ranges', 'bytes');
+    next();
+  });
+
+  // -------------------------------------------------------------
   // 🔁 Prefijo global
   // -------------------------------------------------------------
   app.setGlobalPrefix('api');
 
   // -------------------------------------------------------------
-  // 🌍 CORS ESPECIAL PARA APPS MÓVILES + WEBPAY
+  // 🌍 CORS para app móvil + WebPay
   // -------------------------------------------------------------
   app.enableCors({
     origin: (origin, callback) => {
@@ -100,7 +112,7 @@ async function bootstrap() {
   await app.listen(PORT, '0.0.0.0');
 
   // -------------------------------------------------------------
-  // 📋 LOGS INFORMATIVOS
+  // 📋 LOGS
   // -------------------------------------------------------------
   const base = process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`;
   console.log('================================================');

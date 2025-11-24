@@ -1,12 +1,5 @@
 // ===============================================================
-// 🧩 USERS SERVICE – SmartRent+ (Versión Final Roles + Suscripciones)
-// ---------------------------------------------------------------
-// 🔥 Incluye:
-// - Obtener usuario con nivel de suscripción
-// - Actualizar perfil + sincronizar rol automáticamente
-// - Actualizar imagen
-// - Sincronizar tipoCuenta según suscripcionNivel
-// ---------------------------------------------------------------
+// 🧩 USERS SERVICE – SmartRent+ (Versión Final Completísima)
 // ===============================================================
 
 import { Injectable, NotFoundException } from '@nestjs/common';
@@ -17,7 +10,7 @@ export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
   // ===========================================================
-  // 🔹 Convertir nivel → Tipo de Cuenta (ROL)
+  // Convertir nivel → Rol
   // ===========================================================
   private mapNivelToRol(nivel: string): string {
     const p = (nivel ?? '').toLowerCase();
@@ -30,7 +23,7 @@ export class UsersService {
   }
 
   // ===========================================================
-  // 🔹 Obtener usuario por ID (incluye nivel y rol)
+  // Obtener usuario por ID
   // ===========================================================
   async findById(id: number) {
     const user = await this.prisma.user.findUnique({
@@ -44,17 +37,29 @@ export class UsersService {
         tipoCuenta: true,
         suscripcionNivel: true,
         imagen: true,
+        portada: true,
         bio: true,
         facebook: true,
         instagram: true,
         linkedin: true,
         web: true,
+        whatsapp: true,
+
+        // CONFIGURACIÓN
+        darkMode: true,
+        animacionesPerfil: true,
+        mostrarPortada: true,
+        estiloTarjetas: true,
+        colorTema: true,
+        fontSize: true,
+        perfilPrivado: true,
+        mostrarRedes: true,
+        mostrarContacto: true,
       },
     });
 
     if (!user) throw new NotFoundException('Usuario no encontrado');
 
-    // 🔥 Sincronizar automáticamente el rol si está incorrecto
     const rolCorrecto = this.mapNivelToRol(user.suscripcionNivel);
 
     if (user.tipoCuenta !== rolCorrecto) {
@@ -70,31 +75,48 @@ export class UsersService {
   }
 
   // ===========================================================
-  // 🔹 Actualizar perfil (incluye nivel + rol)
+  // Actualizar perfil COMPLETO
   // ===========================================================
   async updateUser(id: number, data: any) {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('Usuario no encontrado');
 
-    // 🔥 Si se cambia el nivel, actualizar tipoCuenta automáticamente
     const newNivel = data.suscripcionNivel ?? user.suscripcionNivel;
     const newRol = this.mapNivelToRol(newNivel);
 
     return this.prisma.user.update({
       where: { id },
       data: {
-        nombre: data.nombre,
-        telefono: data.telefono,
-        ciudad: data.ciudad,
-        bio: data.bio,
-        facebook: data.facebook,
-        instagram: data.instagram,
-        linkedin: data.linkedin,
-        web: data.web,
-        imagen: data.imagen,
+        nombre: data.nombre ?? user.nombre,
+        telefono: data.telefono ?? user.telefono,
+        ciudad: data.ciudad ?? user.ciudad,
+        bio: data.bio ?? user.bio,
+
+        // REDES SOCIALES
+        facebook: data.facebook ?? user.facebook,
+        instagram: data.instagram ?? user.instagram,
+        linkedin: data.linkedin ?? user.linkedin,
+        web: data.web ?? user.web,
+        whatsapp: data.whatsapp ?? user.whatsapp,
+
+        // IMAGEN + PORTADA
+        imagen: data.imagen ?? user.imagen,
+        portada: data.portada ?? user.portada,
+
+        // CONFIGURACIÓN DE PERFIL
+        darkMode: data.darkMode ?? user.darkMode,
+        animacionesPerfil: data.animacionesPerfil ?? user.animacionesPerfil,
+        mostrarPortada: data.mostrarPortada ?? user.mostrarPortada,
+        estiloTarjetas: data.estiloTarjetas ?? user.estiloTarjetas,
+        colorTema: data.colorTema ?? user.colorTema,
+        fontSize: data.fontSize ?? user.fontSize,
+
+        perfilPrivado: data.perfilPrivado ?? user.perfilPrivado,
+        mostrarRedes: data.mostrarRedes ?? user.mostrarRedes,
+        mostrarContacto: data.mostrarContacto ?? user.mostrarContacto,
 
         suscripcionNivel: newNivel,
-        tipoCuenta: newRol, // 🔥 ACTUALIZADO AUTOMÁTICAMENTE
+        tipoCuenta: newRol,
       },
       select: {
         id: true,
@@ -105,17 +127,30 @@ export class UsersService {
         tipoCuenta: true,
         suscripcionNivel: true,
         imagen: true,
+        portada: true,
         bio: true,
         facebook: true,
         instagram: true,
         linkedin: true,
         web: true,
+        whatsapp: true,
+
+        // CONFIGURACIÓN
+        darkMode: true,
+        animacionesPerfil: true,
+        mostrarPortada: true,
+        estiloTarjetas: true,
+        colorTema: true,
+        fontSize: true,
+        perfilPrivado: true,
+        mostrarRedes: true,
+        mostrarContacto: true,
       },
     });
   }
 
   // ===========================================================
-  // 🔹 Actualizar SOLO imagen
+  // Actualizar SOLO la imagen
   // ===========================================================
   async updateUserImage(id: number, filePath: string) {
     const user = await this.prisma.user.findUnique({ where: { id } });
@@ -128,6 +163,7 @@ export class UsersService {
         id: true,
         nombre: true,
         imagen: true,
+        portada: true,
         suscripcionNivel: true,
         tipoCuenta: true,
       },
