@@ -1,11 +1,5 @@
 // ===============================================================
 // 🚀 APP MODULE – SmartRent+ Backend (Versión Final Actualizada)
-// ---------------------------------------------------------------
-// 🔥 Compatible con WebPay (sandbox + producción)
-// 🔥 Manejo de archivos PDF / boletas en /public
-// 🔥 Configuración global .env mejorada
-// 🔥 Roles por suscripción activo
-// 🔥 Comentarios y Perfil Social (posts, likes, comentarios)
 // ===============================================================
 
 import { Module } from '@nestjs/common';
@@ -13,12 +7,12 @@ import { join } from 'path';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { ConfigModule } from '@nestjs/config';
 
-// ====== Controladores y servicios raíz ======
+// ====== Controladores raíz ======
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaService } from './prisma/prisma.service';
 
-// ====== Módulos funcionales existentes ======
+// ====== Módulos existentes ======
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { CompaniesModule } from './companies/companies.module';
@@ -39,13 +33,22 @@ import { ComentariosModule } from './comentarios/comentarios.module';
 // ⭐⭐⭐ PUBLICACIONES DEL PERFIL
 import { ProfilePostModule } from './profile-post/profile-post.module';
 
-// ⭐⭐⭐ NUEVO: PUBLICACIONES ADMIN (MODERACIÓN)
+// ⭐⭐⭐ PUBLICACIONES ADMIN
 import { AdminPublicacionesModule } from './admin-publicaciones/admin-publicaciones.module';
+
+// ⭐⭐⭐ NOTIFICACIONES (🔥 NUEVO)
+import { NotificacionesModule } from './notificaciones/notificaciones.module';
+
+// ⭐⭐⭐ VENTAS
+import { VentasModule } from './ventas/ventas.module';
+
+// ⭐⭐⭐ NUEVO — ESTADÍSTICAS DE VENTAS
+import { EstadisticasVentasModule } from './estadisticas-ventas/estadisticas-ventas.module';
 
 @Module({
   imports: [
     // ================================================
-    // 🌍 Configuración global (.env)
+    // 🌍 Configuración global
     // ================================================
     ConfigModule.forRoot({
       isGlobal: true,
@@ -66,10 +69,15 @@ import { AdminPublicacionesModule } from './admin-publicaciones/admin-publicacio
       rootPath: join(process.cwd(), 'public'),
       serveRoot: '/public',
     }),
+     ServeStaticModule.forRoot({
+  rootPath: join(process.cwd(), 'uploads/ventas'),
+  serveRoot: '/uploads/ventas',
+}),
 
     // ================================================
     // 🔑 Módulos principales
     // ================================================
+    VentasModule,
     AuthModule,
     UsersModule,
     CompaniesModule,
@@ -80,29 +88,27 @@ import { AdminPublicacionesModule } from './admin-publicaciones/admin-publicacio
     SupportModule,
     UploadsModule,
     ReservationsModule,
-    EstadisticasModule,
-    InvoiceModule,
 
-    // 💳 Suscripciones
+    // 📊 Estadísticas de ARRIENDOS
+    EstadisticasModule,
+
+    // 📊📦🔥 Estadísticas de VENTAS (NUEVO)
+    EstadisticasVentasModule,
+
+    InvoiceModule,
     SubscriptionsModule,
 
-    // ⭐ Comentarios
+    // ⭐ Módulos sociales y de interacción
     ComentariosModule,
-
-    // ⭐ Publicaciones de usuario
     ProfilePostModule,
-
-    // ⭐ Publicaciones del ADMIN (MODERACIÓN)
     AdminPublicacionesModule,
+
+    // ⭐⭐⭐ AÑADIDO — Módulo de Notificaciones
+    NotificacionesModule,
   ],
 
   controllers: [AppController],
-
-  providers: [
-    AppService,
-    PrismaService,
-  ],
-
+  providers: [AppService, PrismaService],
   exports: [PrismaService],
 })
 export class AppModule {}

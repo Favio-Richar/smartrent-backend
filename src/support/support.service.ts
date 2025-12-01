@@ -1,9 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { NotificacionesService } from 'src/notificaciones/notificaciones.service';
 
 @Injectable()
 export class SupportService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private noti: NotificacionesService,   // ✅ INYECTAR SERVICIO DE NOTIFICACIONES
+  ) {}
 
   // =====================================================
   // 🔹 FAQs
@@ -22,15 +26,13 @@ export class SupportService {
   }
 
   // =====================================================
-  // 🔹 Crear ticket
+  // 🔹 CREAR TICKET
   // =====================================================
   async createTicket(data: any) {
-    let imageData: string | null = null;
-    if (data.imageBase64 && typeof data.imageBase64 === 'string') {
-      imageData = data.imageBase64;
-    } else if (data.imageUrl && typeof data.imageUrl === 'string') {
-      imageData = data.imageUrl;
-    }
+    const imageData = data.imageBase64 ?? (data.imageUrl ? data.imageUrl : null);
+
+    const documentData = data.documentBase64 ?? null;
+    const documentName = data.documentName ?? null;
 
     const ticket = await this.prisma.supportTicket.create({
       data: {
@@ -38,16 +40,29 @@ export class SupportService {
         description: data.description?.trim() || 'Sin descripción',
         category: data.category || 'General',
         imageBase64: imageData,
+        documentBase64: documentData,
+        documentName: documentName,
         status: data.status || 'Pendiente',
         respuesta: data.respuesta || '',
         userId: data.userId || null,
       },
     });
+
+    // 🔔 NOTIFICACIÓN AUTOMÁTICA
+    if (ticket.userId) {
+      await this.noti.crearNotificacion(
+        ticket.userId,
+        "Tu ticket fue recibido",
+        `Hemos recibido tu ticket: ${ticket.subject}. Nuestro equipo lo revisará.`,
+        ticket.id
+      );
+    }
+
     return { success: true, message: 'Ticket creado exitosamente', ticket };
   }
 
   // =====================================================
-  // 🔹 Obtener todos los tickets
+  // 🔹 OBTENER TODOS LOS TICKETS
   // =====================================================
   async getAllTickets() {
     const tickets = await this.prisma.supportTicket.findMany({
@@ -56,6 +71,7 @@ export class SupportService {
         user: { select: { id: true, nombre: true, correo: true, imagen: true } },
       },
     });
+
     return tickets.map(t => ({
       ...t,
       imageBase64: t.imageBase64
@@ -63,11 +79,13 @@ export class SupportService {
             ? t.imageBase64
             : `data:image/png;base64,${t.imageBase64}`)
         : null,
+      documentBase64: t.documentBase64 ?? null,
+      documentName: t.documentName ?? null,
     }));
   }
 
   // =====================================================
-  // 🔹 Tickets por usuario
+  // 🔹 TICKETS POR USUARIO
   // =====================================================
   async getTicketsByUser(userId: number) {
     return await this.prisma.supportTicket.findMany({
@@ -77,7 +95,7 @@ export class SupportService {
   }
 
   // =====================================================
-  // 🔹 Actualizar ticket
+  // 🔹 ACTUALIZAR TICKET
   // =====================================================
   async updateTicket(id: number, data: any) {
     const existing = await this.prisma.supportTicket.findUnique({ where: { id } });
@@ -90,11 +108,22 @@ export class SupportService {
         respuesta: data.respuesta ?? existing.respuesta,
       },
     });
+
+    // 🔔 NOTIFICACIÓN
+    if (existing.userId) {
+      await this.noti.crearNotificacion(
+        existing.userId,
+        `Actualización del ticket #${id}`,
+        `El estado del ticket cambió a: ${data.status}`,
+        id
+      );
+    }
+
     return { success: true, message: 'Ticket actualizado correctamente', updated };
   }
 
   // =====================================================
-  // 🔹 Responder ticket
+  // 🔹 RESPONDER TICKET
   // =====================================================
   async replyTicket(id: number, respuesta: string) {
     const existing = await this.prisma.supportTicket.findUnique({ where: { id } });
@@ -104,11 +133,22 @@ export class SupportService {
       where: { id },
       data: { respuesta, status: 'En proceso' },
     });
+
+    // 🔔 NOTIFICACIÓN
+    if (existing.userId) {
+      await this.noti.crearNotificacion(
+        existing.userId,
+        `Respuesta a tu ticket #${id}`,
+        respuesta,
+        id
+      );
+    }
+
     return { success: true, message: 'Respuesta enviada', updated };
   }
 
   // =====================================================
-  // 🔹 Resolver ticket
+  // 🔹 RESOLVER TICKET
   // =====================================================
   async resolveTicket(id: number) {
     const existing = await this.prisma.supportTicket.findUnique({ where: { id } });
@@ -118,22 +158,34 @@ export class SupportService {
       where: { id },
       data: { status: 'Resuelto' },
     });
+
+    // 🔔 NOTIFICACIÓN
+    if (existing.userId) {
+      await this.noti.crearNotificacion(
+        existing.userId,
+        `Ticket #${id} resuelto`,
+        "Tu ticket ha sido marcado como RESUELTO.",
+        id
+      );
+    }
+
     return { success: true, message: 'Ticket resuelto', updated };
   }
 
   // =====================================================
-  // 🔹 Eliminar ticket
+  // 🔹 ELIMINAR TICKET
   // =====================================================
   async deleteTicket(id: number) {
     const existing = await this.prisma.supportTicket.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Ticket no encontrado');
 
     await this.prisma.supportTicket.delete({ where: { id } });
+
     return { success: true, message: 'Ticket eliminado correctamente' };
   }
 
   // =====================================================
-  // 🔹 Crear feedback
+  // 🔹 FEEDBACK
   // =====================================================
   async createFeedback(data: any) {
     const rating = Number(data.rating);
@@ -148,12 +200,10 @@ export class SupportService {
         userId: data.userId || null,
       },
     });
+
     return { success: true, message: 'Feedback registrado correctamente', feedback };
   }
 
-  // =====================================================
-  // 🔹 Obtener TODAS las reseñas (Admin)
-  // =====================================================
   async getAllFeedback() {
     return await this.prisma.feedback.findMany({
       include: {
@@ -163,9 +213,6 @@ export class SupportService {
     });
   }
 
-  // =====================================================
-  // 🔹 Responder reseña (Admin)
-  // =====================================================
   async updateFeedback(id: number, data: any) {
     const existing = await this.prisma.feedback.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Reseña no encontrada');
@@ -174,12 +221,10 @@ export class SupportService {
       where: { id },
       data: { respuesta: data.respuesta || null },
     });
+
     return { success: true, message: 'Respuesta agregada correctamente', updated };
   }
 
-  // =====================================================
-  // 🔹 Estadísticas de feedback
-  // =====================================================
   async getFeedbackStats() {
     const [avg, count, ratings] = await Promise.all([
       this.prisma.feedback.aggregate({ _avg: { rating: true } }),
@@ -213,6 +258,7 @@ export class SupportService {
 
   async createCommunityPost(data: any) {
     if (!data.title || !data.body) throw new Error('Faltan campos requeridos');
+
     const post = await this.prisma.communityPost.create({
       data: {
         author: data.author || 'Anónimo',
@@ -220,6 +266,7 @@ export class SupportService {
         body: data.body.trim(),
       },
     });
+
     return { success: true, message: 'Publicación creada correctamente', post };
   }
 }

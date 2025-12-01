@@ -39,10 +39,8 @@ model User {
   instagram  String?
   linkedin   String?
   web        String?
-  whatsapp   String?     // 👈 AGREGADO
+  whatsapp   String?
   tipoCuenta String  @default("Usuario")
-
-  // 🔥 AGREGADO → Nivel de suscripción para roles
 
   suscripcionNivel String @default("free")
 
@@ -62,32 +60,31 @@ model User {
   feedbacks           Feedback[]
   SubscriptionPayment SubscriptionPayment[]
   ActiveSubscription  ActiveSubscription[]
-  invoices            Invoice[] // 🔥 AGREGADO
+  invoices            Invoice[]
   Company             Company[]
   ratings             Rating[]
   reactions           Reaction[]
-  portada    String?     // 👈 AGREGADO
+  portada             String?
 
-    // ===========================
-  // CONFIGURACIONES DE PERFIL
-  // ===========================
-
-  darkMode         Boolean  @default(false)
+  darkMode          Boolean @default(false)
   animacionesPerfil Boolean @default(true)
-  mostrarPortada   Boolean  @default(true)
-  estiloTarjetas   String?  @default("moderno")
-  colorTema        String?  @default("azul")
-  fontSize         Float?   @default(1.0)
+  mostrarPortada    Boolean @default(true)
+  estiloTarjetas    String? @default("moderno")
+  colorTema         String? @default("azul")
+  fontSize          Float?  @default(1.0)
 
-  // PRIVACIDAD
-  perfilPrivado    Boolean  @default(false)
-  mostrarRedes     Boolean  @default(true)
-  mostrarContacto  Boolean  @default(true)
-
+  perfilPrivado   Boolean @default(false)
+  mostrarRedes    Boolean @default(true)
+  mostrarContacto Boolean @default(true)
 
   profilePosts    ProfilePost[]
   profileLikes    ProfileLike[]
   profileComments ProfileComment[]
+  notificaciones  Notificacion[]
+  ventas          Venta[]
+  reservaVentas   ReservaVenta[]
+  resenaVentas    ResenaVenta[]
+  favoritoVentas  FavoritoVenta[]
 
   @@index([tipoCuenta])
   @@index([fechaRegistro])
@@ -95,14 +92,73 @@ model User {
 }
 
 // =============================================================
-// COMPANIES
+// VENTA
+// =============================================================
+model Venta {
+  id          Int     @id @default(autoincrement())
+  title       String
+  description String?
+  price       Float
+  category    String
+  type        String  @default("producto")
+
+  image_url String?
+  images    String[] @default([])
+  video_url String?
+  videos    String[] @default([])
+
+  stock    Int?    @default(0)
+  marca    String?
+  modelo   String?
+  color    String?
+  estado   String? @default("Nuevo")     // <--- Estado del producto
+  status   String  @default("published") // <--- Estado de PUBLICACIÓN
+
+  featured Boolean @default(false)
+
+  street    String?
+  location  String?
+  comuna    String?
+  latitude  Float?
+  longitude Float?
+  metro     String?
+
+  companyName String?
+  contactName String?
+  phone       String?
+  email       String?
+  whatsapp    String?
+  website     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  visitas  Int @default(0)   // ⭐ NECESARIO PARA ESTADÍSTICAS  
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
+
+  reservas  ReservaVenta[]
+  resenas   ResenaVenta[]
+  favoritos FavoritoVenta[]
+
+  @@index([category])
+  @@index([featured])
+  @@index([comuna])
+  @@index([price])
+  @@index([createdAt])
+}
+
+
+// =============================================================
+// COMPANY
 // =============================================================
 model Company {
   id            Int     @id @default(autoincrement())
   rutEmpresa    String?
   nombreEmpresa String
   correo        String  @unique
-  contrasena    String
+  contrasena    String?
 
   telefono    String?
   direccion   String?
@@ -123,54 +179,64 @@ model Company {
 
   empleos     Job[]
   propiedades Property[]
-
+  @@unique([userId])     // <— FIX CRÍTICO
   @@index([fechaRegistro])
 }
 
 // =============================================================
-// PROPERTIES
+// PROPERTY
 // =============================================================
 model Property {
-  id               Int      @id @default(autoincrement())
-  titulo           String
-  descripcion      String
-  precio           Float
-  categoria        String
-  ubicacion        String?
-  comuna           String?
-  tipo             String?
-  imagen           String?
-  images           String[] @default([])
-  videoUrl         String?
-  videos           String[] @default([])
-  latitude         Float?
-  longitude        Float?
-  destacado        Boolean  @default(false)
-  area             Int?
-  dormitorios      Int?
-  banos            Int?
-  anio             Int?
+  id          Int     @id @default(autoincrement())
+  titulo      String
+  descripcion String
+  precio      Float
+  categoria   String
+  tipo        String?
+
+  imagen   String?
+  images   String[] @default([])
+  videoUrl String?
+  videos   String[] @default([])
+
+  street    String?
+  location  String?
+  comuna    String?
+  metro     String?
+  latitude  Float?
+  longitude Float?
+
+  stock    Int?
+  marca    String?
+  modelo   String?
+  color    String?
+  estado   String?
+  featured Boolean @default(false)
+
+  area        Int?
+  dormitorios Int?
+  banos       Int?
+  anio        Int?
+
   fechaPublicacion DateTime @default(now())
   metadata         Json?
-  companyName      String?
-  contactName      String?
-  contactPhone     String?
-  contactEmail     String?
-  whatsapp         String?
-  website          String?
 
-  // 📊 Métricas
+  companyName  String?
+  contactName  String?
+  contactPhone String?
+  contactEmail String?
+  whatsapp     String?
+  website      String?
+
   visitas  Int           @default(0)
   reservas Int           @default(0)
   state    PropertyState @default(draft)
   status   String?
   views    Int           @default(0)
 
-  // 📅 Fechas
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // 🔗 Relaciones
   userId    Int?
   companyId Int?
 
@@ -271,6 +337,23 @@ model Favorite {
 }
 
 // =============================================================
+// FAVORITO VENTA
+// =============================================================
+model FavoritoVenta {
+  id        Int      @id @default(autoincrement())
+  ventaId   Int
+  userId    Int
+  createdAt DateTime @default(now())
+
+  venta Venta @relation(fields: [ventaId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@unique([userId, ventaId], name: "userId_ventaId")
+  @@index([ventaId])
+  @@index([userId])
+}
+
+// =============================================================
 // COMMENTS
 // =============================================================
 model Comment {
@@ -292,17 +375,19 @@ model Comment {
 // SUPPORT TICKETS
 // =============================================================
 model SupportTicket {
-  id          Int      @id @default(autoincrement())
-  subject     String
-  description String
-  category    String?  @default("General")
-  imageBase64 String?
-  status      String   @default("Pendiente")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @default(now()) @updatedAt
-  userId      Int?
-  user        User?    @relation(fields: [userId], references: [id])
-  respuesta   String?  @db.Text
+  id             Int      @id @default(autoincrement())
+  subject        String
+  description    String
+  category       String?  @default("General")
+  imageBase64    String?
+  status         String   @default("Pendiente")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+  userId         Int?
+  user           User?    @relation(fields: [userId], references: [id])
+  respuesta      String?  @db.Text
+  documentBase64 String?
+  documentName   String?
 
   @@index([userId])
   @@index([status])
@@ -373,7 +458,7 @@ model CommunityPost {
 }
 
 // =============================================================
-// PAGOS Y SUSCRIPCIONES
+// SUBSCRIPTION PAYMENTS
 // =============================================================
 model SubscriptionPayment {
   id                Int       @id @default(autoincrement())
@@ -392,7 +477,7 @@ model SubscriptionPayment {
   updatedAt         DateTime? @updatedAt
 
   user     User      @relation(fields: [userId], references: [id])
-  invoices Invoice[] // 🔥 AGREGADO — relación inversa
+  invoices Invoice[]
 
   @@index([userId])
   @@index([plan])
@@ -401,13 +486,14 @@ model SubscriptionPayment {
   @@index([token, status])
 }
 
+// =============================================================
+// ACTIVE SUBSCRIPTIONS
+// =============================================================
 model ActiveSubscription {
   id     Int    @id @default(autoincrement())
   userId Int
   plan   String
-
-  // 🔥 AGREGADO → nivel del plan (pro, premium, advance)
-  nivel String @default("basic")
+  nivel  String @default("basic")
 
   startDate DateTime @default(now())
   endDate   DateTime
@@ -426,13 +512,13 @@ model ActiveSubscription {
 }
 
 // =============================================================
-// INVOICES (Boletas PDF generadas por WebPay)
+// INVOICES
 // =============================================================
 model Invoice {
   id                Int      @id @default(autoincrement())
   userId            Int
-  paymentId         Int // relación con SubscriptionPayment
-  pdfUrl            String // ruta del archivo PDF generado
+  paymentId         Int
+  pdfUrl            String
   amount            Int
   plan              String
   authorizationCode String?
@@ -447,11 +533,11 @@ model Invoice {
 }
 
 // =============================================================
-// RATINGS (CALIFICACIÓN DE PROPIEDADES)
+// RATINGS
 // =============================================================
 model Rating {
   id         Int      @id @default(autoincrement())
-  score      Int // 1 a 5
+  score      Int
   userId     Int
   propertyId Int
   createdAt  DateTime @default(now())
@@ -459,16 +545,16 @@ model Rating {
   user     User     @relation(fields: [userId], references: [id])
   property Property @relation(fields: [propertyId], references: [id])
 
-  @@unique([userId, propertyId]) // ✔ evita calificar dos veces
+  @@unique([userId, propertyId])
   @@index([propertyId])
 }
 
 // =============================================================
-// REACTIONS (LIKE / LOVE / WOW / FIRE)
+// REACTIONS
 // =============================================================
 model Reaction {
   id         Int      @id @default(autoincrement())
-  tipo       String // like, love, wow, fire
+  tipo       String
   userId     Int
   propertyId Int
   createdAt  DateTime @default(now())
@@ -476,35 +562,36 @@ model Reaction {
   user     User     @relation(fields: [userId], references: [id])
   property Property @relation(fields: [propertyId], references: [id])
 
-  @@unique([userId, propertyId, tipo]) // ✔ evita spamear reacciones
+  @@unique([userId, propertyId, tipo])
   @@index([propertyId])
 }
 
+// =============================================================
+// PROFILE POSTS
+// =============================================================
 model ProfilePost {
-  id          Int       @id @default(autoincrement())
-  userId      Int
-  tipo        String    @default("text") // text | image | video
-  texto       String
-  titulo      String?                      // opcional
-  imagen      String?                      // URL de imagen
-  video       String?                      // URL de video
-  miniatura   String?                      // thumbnail para videos
-  duracion    Int?                         // duración del video en segundos
-  ubicacion   String?                      // lugar del post
-  tags        String?                      // "#departamento,#arriendo"
-  isPublic    Boolean   @default(true)     // público o privado
+  id        Int     @id @default(autoincrement())
+  userId    Int
+  tipo      String  @default("text")
+  texto     String
+  titulo    String?
+  imagen    String?
+  video     String?
+  miniatura String?
+  duracion  Int?
+  ubicacion String?
+  tags      String?
+  isPublic  Boolean @default(true)
 
-  createdAt   DateTime  @default(now())
-  editedAt    DateTime?                     // se actualiza si editas el post
+  createdAt DateTime  @default(now())
+  editedAt  DateTime?
 
-  // Relaciones
-  likes       ProfileLike[]
-  comments    ProfileComment[]
+  likes    ProfileLike[]
+  comments ProfileComment[]
 
-  // repost (como compartir publicación)
-  repostId    Int?
-  repost      ProfilePost?   @relation("RepostRelation", fields: [repostId], references: [id])
-  repostedBy  ProfilePost[]  @relation("RepostRelation")
+  repostId   Int?
+  repost     ProfilePost?  @relation("RepostRelation", fields: [repostId], references: [id])
+  repostedBy ProfilePost[] @relation("RepostRelation")
 
   user User @relation(fields: [userId], references: [id])
 
@@ -513,8 +600,9 @@ model ProfilePost {
   @@index([createdAt])
 }
 
-
-
+// =============================================================
+// PROFILE LIKE
+// =============================================================
 model ProfileLike {
   id        Int      @id @default(autoincrement())
   userId    Int
@@ -524,9 +612,12 @@ model ProfileLike {
   user User        @relation(fields: [userId], references: [id])
   post ProfilePost @relation(fields: [postId], references: [id])
 
-  @@unique([userId, postId]) // evita doble like
+  @@unique([userId, postId])
 }
 
+// =============================================================
+// PROFILE COMMENT
+// =============================================================
 model ProfileComment {
   id         Int      @id @default(autoincrement())
   postId     Int
@@ -536,4 +627,64 @@ model ProfileComment {
 
   post ProfilePost @relation(fields: [postId], references: [id])
   user User        @relation(fields: [userId], references: [id])
+}
+
+// =============================================================
+// NOTIFICACIONES
+// =============================================================
+model Notificacion {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  tipo      String
+  titulo    String
+  mensaje   String
+  refId     Int?
+  leido     Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([tipo])
+  @@index([createdAt])
+}
+
+// =============================================================
+// RESERVA VENTA
+// =============================================================
+model ReservaVenta {
+  id      Int      @id @default(autoincrement())
+  ventaId Int
+  userId  Int
+  fecha   DateTime @default(now())
+  estado  String   @default("pendiente")
+  meta      Json?    // 👈 AQUI ESTA LA PIEZA QUE FALTABA
+  total     Int?      // ⭐ CAMPO NECESARIO PARA ESTADÍSTICAS
+  venta Venta @relation(fields: [ventaId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@index([ventaId])
+  @@index([userId])
+  @@index([estado])
+}
+
+// =============================================================
+// RESENA VENTA
+// =============================================================
+model ResenaVenta {
+  id         Int      @id @default(autoincrement())
+  ventaId    Int
+  userId     Int
+  puntuacion Int
+  comentario String?
+  respuesta  String?  @db.Text
+  createdAt  DateTime @default(now())
+
+  venta Venta @relation(fields: [ventaId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@index([ventaId])
+  @@index([userId])
+  @@index([puntuacion])
+  @@index([createdAt])
 }

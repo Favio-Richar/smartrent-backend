@@ -1,11 +1,3 @@
-// ===============================================================
-// 💾 PROPERTIES SERVICE - SmartRent+ (versión multimedia final)
-// ---------------------------------------------------------------
-// • Soporta múltiples imágenes y videos (string o array).
-// • Corrige el mapeo para que 'videoUrl' siempre se incluya en 'videos'.
-// • Compatible con Prisma JSON[] y campos nulos.
-// ===============================================================
-
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -61,7 +53,7 @@ export class PropertiesService {
   }
 
   // ===============================================================
-  // 🧩 Normalizador extendido (maneja arrays multimedia)
+  // NORMALIZADOR DE ENTRADA
   // ===============================================================
   private normalizeIn(payload: AnyObj, forUpdate = false): AnyObj {
     if (!payload || typeof payload !== 'object') payload = {};
@@ -72,42 +64,24 @@ export class PropertiesService {
       v === '' || v === null || v === undefined || Number.isNaN(Number(v))
         ? undefined
         : Number(v);
-    const toBool = (v: any) => v === true || v === 'true' || v === 1 || v === '1';
 
-    // ✅ Metadata parse
+    const toBool = (v: any) =>
+      v === true || v === 'true' || v === 1 || v === '1';
+
     let metadata = take('metadata', 'meta');
     if (typeof metadata === 'string') {
-      try {
-        metadata = JSON.parse(metadata);
-      } catch {
-        metadata = undefined;
-      }
+      try { metadata = JSON.parse(metadata); } catch { metadata = undefined; }
     }
 
-    // ✅ Arrays multimedia (auto-normaliza si viene string)
     let imagesArr: string[] = [];
-    if (Array.isArray(p.images)) {
-      imagesArr = p.images;
-    } else if (typeof p.images === 'string' && p.images.trim() !== '') {
-      imagesArr = [p.images.trim()];
-    } else if (Array.isArray(p.imagenes)) {
-      imagesArr = p.imagenes;
-    } else if (Array.isArray(p.gallery)) {
-      imagesArr = p.gallery;
-    }
+    if (Array.isArray(p.images)) imagesArr = p.images;
+    else if (typeof p.images === 'string' && p.images.trim() !== '') imagesArr = [p.images.trim()];
+    else if (Array.isArray(p.gallery)) imagesArr = p.gallery;
 
     let videosArr: string[] = [];
-    if (Array.isArray(p.videos)) {
-      videosArr = p.videos;
-    } else if (typeof p.videos === 'string' && p.videos.trim() !== '') {
-      videosArr = [p.videos.trim()];
-    } else if (Array.isArray(p.videosUrl)) {
-      videosArr = p.videosUrl;
-    } else if (Array.isArray(p.mediaVideos)) {
-      videosArr = p.mediaVideos;
-    } else if (p.videoUrl) {
-      videosArr = [p.videoUrl];
-    }
+    if (Array.isArray(p.videos)) videosArr = p.videos;
+    else if (typeof p.videos === 'string' && p.videos.trim() !== '') videosArr = [p.videos.trim()];
+    else if (p.videoUrl) videosArr = [p.videoUrl];
 
     let imageUrl = take('image_url', 'imagen', 'imageUrl');
     if (!imageUrl && imagesArr.length) imageUrl = imagesArr[0];
@@ -119,7 +93,10 @@ export class PropertiesService {
       description: take('description', 'descripcion') ?? '',
       price: toNum(take('price', 'precio')) ?? 0,
       category: take('category', 'categoria') ?? 'general',
+
+      // ✔ CAMPO CORRECTO
       location: take('location', 'ubicacion') ?? null,
+
       comuna: take('comuna') ?? null,
       type: take('type', 'tipo') ?? 'propiedad',
       imageUrl,
@@ -128,11 +105,15 @@ export class PropertiesService {
       videos: videosArr,
       latitude: toNum(take('latitude')),
       longitude: toNum(take('longitude')),
+
+      // ✔ CAMPO CORRECTO: "featured"
       featured: toBool(take('featured', 'destacado')),
+
       area: toNum(take('area')),
       bedrooms: toNum(take('bedrooms', 'dormitorios')),
       bathrooms: toNum(take('bathrooms', 'banos')),
       year: toNum(take('year', 'anio')),
+
       companyName: take('companyName', 'company_name'),
       contactName: take('contactName', 'contact_name'),
       phone: take('phone', 'contact_phone'),
@@ -144,71 +125,69 @@ export class PropertiesService {
       companyId: toNum(take('companyId', 'company_id', 'empresaId')),
     };
 
-    if (forUpdate) {
+    if (forUpdate)
       Object.keys(data).forEach((k) => data[k] === undefined && delete data[k]);
-    }
+
     return data;
   }
 
   // ===============================================================
-  // 🔍 Mapeo final (mantiene compatibilidad)
+  // MAPEO FINAL PARA ENVIAR AL FRONTEND
   // ===============================================================
   private mapProperty(p: any) {
-    // ✅ Normaliza videos y genera lista siempre
     let videosSrc: any[] = [];
-    if (Array.isArray(p.videos) && p.videos.length > 0) {
-      videosSrc = p.videos;
-    } else if (typeof p.videos === 'string' && p.videos.trim() !== '') {
-      videosSrc = [p.videos];
-    } else if (Array.isArray(p.videosUrl) && p.videosUrl.length > 0) {
-      videosSrc = p.videosUrl;
-    } else if (Array.isArray(p.mediaVideos) && p.mediaVideos.length > 0) {
-      videosSrc = p.mediaVideos;
-    } else if (p.videoUrl) {
-      videosSrc = [p.videoUrl];
-    }
+
+    if (Array.isArray(p.videos) && p.videos.length > 0) videosSrc = p.videos;
+    else if (typeof p.videos === 'string' && p.videos.trim() !== '') videosSrc = [p.videos];
+    else if (p.videoUrl) videosSrc = [p.videoUrl];
 
     const videos = videosSrc.map((v: string) => this.abs(v));
 
     return {
       id: p.id,
-      title: p.titulo ?? p.title ?? null,
-      description: p.descripcion ?? p.description ?? null,
+      title: p.titulo ?? p.title,
+      description: p.descripcion ?? p.description,
       price: this.toNumber(p.precio),
-      category: p.categoria ?? p.category ?? null,
-      location: p.ubicacion ?? p.location ?? null,
-      comuna: p.comuna ?? null,
-      type: p.tipo ?? p.type ?? null,
-      image_url: this.abs(p.imagen ?? p.imageUrl ?? null),
+      category: p.categoria ?? p.category,
+
+      // ✔ CAMPO CORRECTO
+      location: p.location,
+
+      comuna: p.comuna,
+      type: p.tipo ?? p.type,
+      image_url: this.abs(p.imagen),
       images: (p.images ?? []).map((i: string) => this.abs(i)),
-      video_url: this.abs(p.videoUrl ?? null),
+      video_url: this.abs(p.videoUrl),
       videos,
       latitude: this.toNumber(p.latitude),
       longitude: this.toNumber(p.longitude),
-      featured: p.destacado ?? p.featured ?? false,
+
+      // ✔ CAMPO CORRECTO
+      featured: p.featured ?? false,
+
       area: this.toNumber(p.area),
-      bedrooms: this.toNumber(p.dormitorios ?? p.bedrooms),
-      bathrooms: this.toNumber(p.banos ?? p.bathrooms),
-      year: this.toNumber(p.anio ?? p.year),
-      createdAt: p.createdAt ?? null,
-      updatedAt: p.updatedAt ?? null,
-      state: p.state ?? 'draft',
-      visitas: this.toNumber(p.visitas) ?? 0,
-      reservas: this.toNumber(p.reservas) ?? 0,
-      companyName: p.companyName ?? null,
-      contactName: p.contactName ?? null,
-      phone: p.contactPhone ?? p.phone ?? null,
-      email: p.contactEmail ?? p.email ?? null,
-      whatsapp: p.whatsapp ?? null,
-      website: p.website ?? null,
-      metadata: p.metadata ?? null,
-      userId: p.userId ?? null,
-      companyId: p.companyId ?? null,
+      bedrooms: this.toNumber(p.dormitorios),
+      bathrooms: this.toNumber(p.banos),
+      year: this.toNumber(p.anio),
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt,
+      state: p.state,
+      visitas: this.toNumber(p.visitas),
+      reservas: this.toNumber(p.reservas),
+      companyName: p.companyName,
+      contactName: p.contactName,
+      phone: p.contactPhone,
+      email: p.contactEmail,
+      whatsapp: p.whatsapp,
+      website: p.website,
+      metadata: p.metadata,
+      userId: p.userId,
+      companyId: p.companyId,
     };
   }
 
   // ===============================================================
-  // 📋 Listar propiedades públicas
+  // LISTAR PUBLICAS
   // ===============================================================
   async list(q: ListQuery) {
     const page = q.page && q.page > 0 ? Number(q.page) : 1;
@@ -221,7 +200,7 @@ export class PropertiesService {
 
     if (q.ubicacion) {
       where.OR = [
-        { ubicacion: { contains: q.ubicacion, mode: 'insensitive' } },
+        { location: { contains: q.ubicacion, mode: 'insensitive' } },
         { comuna: { contains: q.ubicacion, mode: 'insensitive' } },
       ];
     }
@@ -248,7 +227,7 @@ export class PropertiesService {
   }
 
   // ===============================================================
-  // 🔍 Obtener una propiedad
+  // OBTENER UNA PROPIEDAD
   // ===============================================================
   async getOne(id: number) {
     const p = await this.prisma.property.findUnique({ where: { id } });
@@ -257,34 +236,40 @@ export class PropertiesService {
   }
 
   // ===============================================================
-  // 🧩 Crear propiedad
+  // CREAR PROPIEDAD
   // ===============================================================
   async create(body: any, owner?: Owner) {
     const d = this.normalizeIn(body, false);
 
     const finalCompanyId =
-      body?.companyId ?? body?.empresaId ?? body?.company_id ?? owner?.companyId ?? undefined;
-    const finalUserId = finalCompanyId ? undefined : owner?.userId ?? undefined;
+      body?.companyId ??
+      body?.empresaId ??
+      body?.company_id ??
+      owner?.companyId;
 
-    if (!finalUserId && !finalCompanyId) {
-      throw new BadRequestException('La propiedad debe tener userId o companyId (dueño).');
-    }
+    const finalUserId = finalCompanyId ? undefined : owner?.userId;
+
+    if (!finalUserId && !finalCompanyId)
+      throw new BadRequestException('La propiedad debe tener userId o companyId');
 
     const toDb: AnyObj = {
       titulo: d.title,
       descripcion: d.description ?? '',
       precio: d.price,
       categoria: d.category ?? 'general',
-      ubicacion: d.location ?? '',
+      location: d.location ?? null,
       comuna: d.comuna ?? null,
       tipo: d.type ?? 'propiedad',
       imagen: d.imageUrl ?? null,
       images: d.images ?? [],
       videoUrl: d.videoUrl ?? null,
       videos: d.videos ?? [],
+
+      // ✔ CAMPO CORRECTO
+      featured: d.featured ?? false,
+
       latitude: d.latitude ?? null,
       longitude: d.longitude ?? null,
-      destacado: d.featured ?? false,
       area: d.area ?? null,
       dormitorios: d.bedrooms ?? null,
       banos: d.bathrooms ?? null,
@@ -305,7 +290,7 @@ export class PropertiesService {
   }
 
   // ===============================================================
-  // ✏️ Actualizar propiedad
+  // ACTUALIZAR PROPIEDAD
   // ===============================================================
   async update(id: number, body: any) {
     const d = this.normalizeIn(body, true);
@@ -315,16 +300,19 @@ export class PropertiesService {
       ...(d.description !== undefined && { descripcion: d.description }),
       ...(d.price !== undefined && { precio: d.price }),
       ...(d.category !== undefined && { categoria: d.category }),
-      ...(d.location !== undefined && { ubicacion: d.location }),
+      ...(d.location !== undefined && { location: d.location }),
       ...(d.comuna !== undefined && { comuna: d.comuna }),
       ...(d.type !== undefined && { tipo: d.type }),
       ...(d.imageUrl !== undefined && { imagen: d.imageUrl }),
       ...(d.images !== undefined && { images: d.images }),
       ...(d.videoUrl !== undefined && { videoUrl: d.videoUrl }),
       ...(d.videos !== undefined && { videos: d.videos }),
+
+      // ✔ CAMPO CORRECTO
+      ...(d.featured !== undefined && { featured: d.featured }),
+
       ...(d.latitude !== undefined && { latitude: d.latitude }),
       ...(d.longitude !== undefined && { longitude: d.longitude }),
-      ...(d.featured !== undefined && { destacado: d.featured }),
       ...(d.area !== undefined && { area: d.area }),
       ...(d.bedrooms !== undefined && { dormitorios: d.bedrooms }),
       ...(d.bathrooms !== undefined && { banos: d.bathrooms }),
@@ -335,7 +323,7 @@ export class PropertiesService {
       ...(d.email !== undefined && { contactEmail: d.email }),
       ...(d.whatsapp !== undefined && { whatsapp: d.whatsapp }),
       ...(d.website !== undefined && { website: d.website }),
-      ...(d.metadata !== undefined && { metadata: d.metadata ? (d.metadata as any) : null }),
+      ...(d.metadata !== undefined && { metadata: d.metadata }),
       ...(d.userId !== undefined && { userId: d.userId }),
       ...(d.companyId !== undefined && { companyId: d.companyId }),
     };
@@ -349,7 +337,7 @@ export class PropertiesService {
   }
 
   // ===============================================================
-  // 📊 Mis propiedades, métricas, clonación y utilidades
+  // UTILIDADES
   // ===============================================================
   async myList(owner: Owner, q: MyListQuery) {
     const page = q.page && q.page > 0 ? q.page : 1;
@@ -415,11 +403,13 @@ export class PropertiesService {
   async updateState(
     id: number,
     state: 'draft' | 'published' | 'paused' | 'archived',
-    owner?: Owner,
   ) {
     const p = await this.prisma.property.findUnique({ where: { id } });
     if (!p) throw new NotFoundException('Property not found');
-    const updated = await this.prisma.property.update({ where: { id }, data: { state } as any });
+    const updated = await this.prisma.property.update({
+      where: { id },
+      data: { state },
+    });
     return this.mapProperty(updated);
   }
 

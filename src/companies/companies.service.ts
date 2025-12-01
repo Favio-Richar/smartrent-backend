@@ -1,87 +1,106 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { CreateCompanyDto } from './dto/create-company.dto';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
 export class CompaniesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // ============================================
-  // ✔ CREATE – Versión definitiva SIN ERRORES TS
-  // ============================================
-  async create(data: CreateCompanyDto) {
+  // ============================================================
+  // CREAR EMPRESA
+  // ============================================================
+  async create(data: any) {
+    // Normaliza valores vacíos
+    Object.keys(data).forEach((k) => {
+      if (data[k] === '' || data[k] === undefined) data[k] = null;
+    });
+
+    // 🔥 FIX 1 → Flutter envía array en registro
+    if (Array.isArray(data.diasOperacion)) {
+      data.diasOperacion = data.diasOperacion.join(',');
+    }
+
     return this.prisma.company.create({
       data: {
-        nombreEmpresa: data.nombreEmpresa,
-        correo: data.correo,
-        telefono: data.telefono,
-        direccion: data.direccion,
-        descripcion: data.descripcion,
-        rutEmpresa: data.rutEmpresa,
-        encargado: data.encargado,
-        dueno: data.dueno,
-        horaApertura: data.horaApertura,
-        horaCierre: data.horaCierre,
-        diasOperacion: data.diasOperacion,
-        logo: data.logo,
-        sitioWeb: data.sitioWeb,
-
-        // 🔥 FIX DEFINITIVO
-        // Prisma no acepta undefined → forzamos null o número.
+        ...data,
         userId: data.userId ?? null,
-      } as any,  // 💀 ESTE AS ANY MATA EL TS2322 DEFINITIVAMENTE
+      },
     });
   }
 
-  // ============================================
-  // ✔ GET ALL
-  // ============================================
+  // ============================================================
+  // GET ALL
+  // ============================================================
   async findAll() {
     return this.prisma.company.findMany();
   }
 
-  // ============================================
-  // ✔ GET ONE
-  // ============================================
+  // ============================================================
+  // GET ONE
+  // ============================================================
   async findOne(id: number) {
-    return this.prisma.company.findUnique({
-      where: { id },
-    });
+    return this.prisma.company.findUnique({ where: { id } });
   }
 
-  // ============================================
-  // ✔ UPDATE – Versión definitiva
-  // ============================================
-  async update(id: number, data: CreateCompanyDto) {
+  // ============================================================
+  // GET BY USER
+  // ============================================================
+  async findByUser(userId: number) {
+    return this.prisma.company.findFirst({ where: { userId } });
+  }
+
+  // ============================================================
+  // GUARDAR LOGO (FUNCIONA)
+  // ============================================================
+  private async saveFile(file: Express.Multer.File, id: number) {
+    const dir = 'uploads/companies';
+
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    const filename = `company_${id}_${Date.now()}.jpg`;
+    const filepath = path.join(dir, filename);
+
+    fs.writeFileSync(filepath, file.buffer);
+
+    return `${process.env.PUBLIC_BASE_URL}/${filepath.replace(/\\/g, '/')}`;
+  }
+
+  // ============================================================
+  // UPDATE EMPRESA (JSON + MULTIPART)
+  // ============================================================
+  async update(id: number, data: any, file?: Express.Multer.File) {
+    // Normalizar vacíos
+    Object.keys(data).forEach((k) => {
+      if (data[k] === '' || data[k] === undefined) data[k] = null;
+    });
+
+    // 🔥 FIX 2 → Flutter envía array en edición también
+    if (Array.isArray(data.diasOperacion)) {
+      data.diasOperacion = data.diasOperacion.join(',');
+    }
+
+    // Logo
+    let logoUrl: string | null = null;
+    if (file) {
+      logoUrl = await this.saveFile(file, id);
+    }
+
     return this.prisma.company.update({
       where: { id },
       data: {
-        nombreEmpresa: data.nombreEmpresa,
-        correo: data.correo,
-        telefono: data.telefono,
-        direccion: data.direccion,
-        descripcion: data.descripcion,
-        rutEmpresa: data.rutEmpresa,
-        encargado: data.encargado,
-        dueno: data.dueno,
-        horaApertura: data.horaApertura,
-        horaCierre: data.horaCierre,
-        diasOperacion: data.diasOperacion,
-        logo: data.logo,
-        sitioWeb: data.sitioWeb,
-
-        // 🔥 FIX DEFINITIVO
-        userId: data.userId ?? null,
-      } as any, // 💀 MATA TODOS LOS CONFLICTOS DE TIPO
+        ...data,
+        logo: logoUrl ?? data.logo ?? null,
+      },
     });
   }
 
-  // ============================================
-  // ✔ DELETE
-  // ============================================
+  // ============================================================
+  // DELETE
+  // ============================================================
   async remove(id: number) {
-    return this.prisma.company.delete({
-      where: { id },
-    });
+    return this.prisma.company.delete({ where: { id } });
   }
 }

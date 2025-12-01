@@ -37,7 +37,13 @@ export class SupportController {
   @Post('tickets')
   async createTicket(@Body() body: any) {
     try {
-      return await this.supportService.createTicket(body);
+      return await this.supportService.createTicket({
+        ...body,
+
+        // 🔥 AGREGADO PARA DOCUMENTOS (NO BORRA NADA TUYO)
+        documentBase64: body.documentBase64 ?? null,
+        documentName: body.documentName ?? null,
+      });
     } catch (e: any) {
       throw new HttpException(
         e?.message || 'Error creando ticket',
@@ -77,7 +83,7 @@ export class SupportController {
   }
 
   // =====================================================
-  // 🔹 Actualizar ticket (estado o respuesta)
+  // 🔹 Actualizar ticket
   // =====================================================
   @Put('tickets/:id')
   async updateTicket(@Param('id') id: string, @Body() body: any) {
@@ -92,7 +98,7 @@ export class SupportController {
   }
 
   // =====================================================
-  // 🔹 Responder ticket (Admin)
+  // 🔹 Responder ticket
   // =====================================================
   @Post('tickets/:id/reply')
   async replyTicket(
@@ -140,7 +146,7 @@ export class SupportController {
   }
 
   // =====================================================
-  // 🔹 Crear feedback o reseña
+  // 🔹 Crear feedback
   // =====================================================
   @Post('feedback')
   async createFeedback(@Body() body: any) {
@@ -170,7 +176,7 @@ export class SupportController {
   }
 
   // =====================================================
-  // 🔹 Actualizar o responder reseña
+  // 🔹 Actualizar / Responder reseña
   // =====================================================
   @Put('feedback/:id')
   async updateFeedback(@Param('id') id: string, @Body() body: any) {
@@ -185,7 +191,7 @@ export class SupportController {
   }
 
   // =====================================================
-  // 🔹 Obtener estadísticas de feedback
+  // 🔹 Stats feedback
   // =====================================================
   @Get('feedback/stats')
   async getFeedbackStats() {
@@ -200,7 +206,7 @@ export class SupportController {
   }
 
   // =====================================================
-  // 🔹 Listar publicaciones comunidad
+  // 🔹 Comunidad
   // =====================================================
   @Get('community')
   async getCommunityPosts() {
@@ -214,9 +220,6 @@ export class SupportController {
     }
   }
 
-  // =====================================================
-  // 🔹 Crear nueva publicación comunidad
-  // =====================================================
   @Post('community')
   async createCommunityPost(@Body() body: any) {
     try {

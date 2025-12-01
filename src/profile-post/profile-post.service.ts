@@ -5,18 +5,21 @@ import { PrismaService } from '../prisma/prisma.service';
 export class ProfilePostService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private readonly baseUrl = "http://10.0.2.2:3000/";
+
+  private buildUrl(path: string | null): string | null {
+    if (!path) return null;
+    return path.startsWith("http") ? path : this.baseUrl + path;
+  }
+
   // ======================================================
   // Crear nueva publicación
   // ======================================================
   async createPost(dto: any) {
-    console.log("👉 POST DTO RECIBIDO:", dto);
-
-    // ❗ Validación para evitar error P2003
     if (!dto.userId || dto.userId === 0) {
       throw new BadRequestException("userId inválido o no enviado.");
     }
 
-    // ❗ Validar que el usuario exista
     const existe = await this.prisma.user.findUnique({
       where: { id: dto.userId },
     });
@@ -25,7 +28,6 @@ export class ProfilePostService {
       throw new NotFoundException(`El usuario ${dto.userId} no existe.`);
     }
 
-    // ✔ Crear post seguro
     return this.prisma.profilePost.create({
       data: {
         userId: dto.userId,
@@ -40,6 +42,11 @@ export class ProfilePostService {
         tipo: dto.tipo ?? 'text',
         isPublic: dto.isPublic ?? true,
         repostId: dto.repostId ?? undefined,
+      },
+      include: {
+        user: true,
+        likes: true,
+        comments: true,
       },
     });
   }
@@ -69,16 +76,14 @@ export class ProfilePostService {
       likes: p.likes.length,
       commentsCount: p.comments.length,
       usuarioNombre: p.user?.nombre ?? "Usuario",
-      usuarioAvatar: p.user?.imagen ?? null,
+      usuarioAvatar: this.buildUrl(p.user?.imagen ?? null),
     }));
   }
 
   // ======================================================
-  // Obtener todos los posts de un usuario
+  // Obtener posts de un usuario
   // ======================================================
   async getUserPosts(userId: number) {
-    console.log("🟦 BUSCANDO POSTS DEL USUARIO:", userId);
-
     const posts = await this.prisma.profilePost.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
@@ -100,7 +105,7 @@ export class ProfilePostService {
       likes: p.likes.length,
       commentsCount: p.comments.length,
       usuarioNombre: p.user?.nombre ?? "Usuario",
-      usuarioAvatar: p.user?.imagen ?? null,
+      usuarioAvatar: this.buildUrl(p.user?.imagen ?? null),
     }));
   }
 
@@ -111,9 +116,11 @@ export class ProfilePostService {
     await this.prisma.profileLike.deleteMany({ where: { postId } });
     await this.prisma.profileComment.deleteMany({ where: { postId } });
 
-    return this.prisma.profilePost.deleteMany({
+    await this.prisma.profilePost.deleteMany({
       where: { id: postId, userId },
     });
+
+    return { ok: true };
   }
 
   // ======================================================
@@ -140,17 +147,32 @@ export class ProfilePostService {
   // Comentarios
   // ======================================================
   async addComment(dto: any) {
-    return this.prisma.profileComment.create({
+    const comment = await this.prisma.profileComment.create({
       data: {
         postId: dto.postId,
         userId: dto.userId,
         comentario: dto.comentario,
       },
+      include: {
+        user: {
+          select: {
+            id: true,
+            nombre: true,
+            correo: true,
+            imagen: true,
+          },
+        },
+      },
     });
+
+    return {
+      ...comment,
+      usuarioAvatar: this.buildUrl(comment.user?.imagen ?? null),
+    };
   }
 
   async getComments(postId: number) {
-    return this.prisma.profileComment.findMany({
+    const comments = await this.prisma.profileComment.findMany({
       where: { postId },
       orderBy: { createdAt: 'asc' },
       include: {
@@ -164,36 +186,40 @@ export class ProfilePostService {
         },
       },
     });
+
+    return comments.map((c) => ({
+      ...c,
+      usuarioAvatar: this.buildUrl(c.user?.imagen ?? null),
+    }));
   }
 
   // ======================================================
-  // Obtener post por ID
+  // Feed general
   // ======================================================
-  async getPostById(postId: number) {
-    const p = await this.prisma.profilePost.findUnique({
-      where: { id: postId },
+  async getFeed() {
+    const posts = await this.prisma.profilePost.findMany({
+      orderBy: { createdAt: 'desc' },
       include: {
         user: {
           select: {
             id: true,
             nombre: true,
             imagen: true,
-            correo: true,
           },
         },
         likes: true,
         comments: true,
       },
+      take: 50,
     });
 
-    if (!p) return null;
-
-    return {
+    return posts.map((p) => ({
       ...p,
       likes: p.likes.length,
       commentsCount: p.comments.length,
       usuarioNombre: p.user?.nombre ?? "Usuario",
-      usuarioAvatar: p.user?.imagen ?? null,
-    };
+      usuarioAvatar: this.buildUrl(p.user?.imagen ?? null),
+      tipoPublicacion: "perfil",
+    }));
   }
 }

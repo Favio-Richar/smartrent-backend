@@ -45,14 +45,19 @@ async function bootstrap() {
   app.use('/uploads', express.static(uploadsDir));
   app.use('/public', express.static(publicDir));
 
+  // ⭐ AGREGADO — carpetas para empresas
+  const empresasDir = join(process.cwd(), 'uploads', 'companies');
+  if (!fs.existsSync(empresasDir)) fs.mkdirSync(empresasDir, { recursive: true });
+
+  // ⭐ AGREGADO — servir logos y portadas
+  app.use('/uploads/companies', express.static(empresasDir));
+
   // -------------------------------------------------------------
-  // 🔥 FIX CRÍTICO PARA VIDEOS MP4 (Flutter VideoPlayer / Chewie)
+  // 🔥 FIX CRÍTICO PARA VIDEOS MP4
   // -------------------------------------------------------------
-  // Esto permite:
-  // ✔ streaming
-  // ✔ que el video cargue en el emulador Android
-  // ✔ evitar 'loading infinito'
-  // ✔ habilitar rangos de bytes para reproducir mp4
+  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
+    prefix: '/uploads',
+  });
 
   app.use('/uploads/video', (req, res, next) => {
     res.setHeader('Content-Type', 'video/mp4');
@@ -118,6 +123,7 @@ async function bootstrap() {
   console.log('================================================');
   console.log(`✅ SmartRent+ API corriendo en: ${base}/api`);
   console.log(`📁 Static dirs: ${base}/uploads/* | ${base}/public/*`);
+  console.log(`📁 Empresas:    ${base}/uploads/companies/*`);
   console.log('🌍 CORS listo para Flutter / Emulador / Android / iOS / WebPay');
   console.log('📦 Body limit: 10MB');
   console.log('================================================');

@@ -1,9 +1,9 @@
 // ===============================================================
 // 🏠 PROPERTIES CONTROLLER - SmartRent+ (versión multimedia completa)
-// ---------------------------------------------------------------
-// - Compatible con todas tus rutas previas.
-// - Añade soporte para múltiples imágenes y videos.
-// - Usa UploadsService internamente (sin romper estructura).
+// ===============================================================
+// - Compatible con Flutter y con tu PropertiesService actualizado
+// - Soporte para múltiples imágenes y videos
+// - FIX: updateState solo recibe (id, state)
 // ===============================================================
 
 import {
@@ -44,6 +44,7 @@ export class PropertiesController {
         (req?.headers?.['x-user-id']
           ? Number(req.headers['x-user-id'])
           : undefined),
+
       companyId:
         req?.user?.companyId ??
         req?.user?.empresaId ??
@@ -71,20 +72,21 @@ export class PropertiesController {
   }
 
   // ===============================================================
-  // ⚙️ Estado y clonación
+  // ⚙️ Cambiar estado
   // ===============================================================
   @UseGuards(JwtAuthGuard)
   @Patch(':id/state')
   async changeState(
     @Param('id', ParseIntPipe) id: number,
     @Body('state') state: 'draft' | 'published' | 'paused' | 'archived',
-    @Req() req: any,
   ) {
     if (!state) throw new BadRequestException('state requerido');
-    const owner = this.ownerFromReq(req);
-    return this.svc.updateState(id, state, owner);
+    return this.svc.updateState(id, state); // FIX APLICADO ✔
   }
 
+  // ===============================================================
+  // 📦 Clonar propiedad
+  // ===============================================================
   @UseGuards(JwtAuthGuard)
   @Post(':id/clone')
   async clone(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
@@ -116,7 +118,7 @@ export class PropertiesController {
   }
 
   // ===============================================================
-  // 🆕 Crear propiedad con soporte multimedia (múltiples archivos)
+  // 🆕 Crear propiedad con soporte multimedia
   // ===============================================================
   @UseGuards(JwtAuthGuard)
   @Post()
@@ -138,7 +140,6 @@ export class PropertiesController {
   ) {
     if (!body) throw new BadRequestException('Body vacío');
 
-    // ✅ Si se suben varios archivos
     const images: string[] = [];
     const videos: string[] = [];
 
@@ -150,11 +151,11 @@ export class PropertiesController {
       }
     }
 
-    // ✅ Normaliza arrays si vienen como string desde frontend
+    // Normalizar arrays del body
     if (typeof body.images === 'string') body.images = [body.images];
     if (typeof body.videos === 'string') body.videos = [body.videos];
 
-    // ✅ Une archivos subidos con arrays existentes
+    // Fusionar uploads + body
     body.images = [...(body.images ?? []), ...images];
     body.videos = [...(body.videos ?? []), ...videos];
 
@@ -169,7 +170,7 @@ export class PropertiesController {
   }
 
   // ===============================================================
-  // ✏️ Actualizar propiedad con soporte multimedia
+  // ✏️ Actualizar propiedad
   // ===============================================================
   @UseGuards(JwtAuthGuard)
   @Put(':id')

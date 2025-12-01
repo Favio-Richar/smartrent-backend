@@ -30,7 +30,7 @@ export class UploadsController {
   constructor(private readonly svc: UploadsService) {}
 
   // ===============================================================
-  // 📸 Subir IMAGEN
+  // 📸 Subir IMAGEN GENÉRICA
   // ===============================================================
   @Post('image')
   @HttpCode(201)
@@ -40,6 +40,26 @@ export class UploadsController {
     const tmpPath = path.join(file.destination, file.filename);
     const relUrl = await this.svc.normalizeImageToJpg(tmpPath);
     return { type: 'image', url: relUrl };
+  }
+
+  // ===============================================================
+  // ⭐ SUBIR IMAGEN EXCLUSIVA DE VENTAS
+  // ===============================================================
+  @Post('ventas')
+  @HttpCode(201)
+  @UseInterceptors(FileInterceptor('file', { storage: tmpStorage }))
+  async uploadVentaImage(@UploadedFile() file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('Archivo requerido');
+
+    const tmpPath = path.join(file.destination, file.filename);
+
+    // 👉 Este método ya guarda en /uploads/ventas/
+    const relUrl = await this.svc.normalizeImageToJpg(tmpPath);
+
+    return {
+      type: 'venta-image',
+      url: relUrl,
+    };
   }
 
   // ===============================================================
